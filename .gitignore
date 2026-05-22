@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .netlify/
+backend/target/
+target/
 *.log
 verification-*.png
 .DS_Store

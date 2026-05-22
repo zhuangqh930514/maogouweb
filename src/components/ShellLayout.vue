@@ -2,9 +2,9 @@
   <el-container class="shell">
     <el-aside class="sidebar" width="236px">
       <div class="brand">
-        <div class="brand-mark">AI</div>
+        <img class="brand-logo" src="/maogou-logo.png" alt="猫狗智投" />
         <div>
-          <div class="brand-title">AI 投研终端</div>
+          <div class="brand-title">猫狗智投</div>
           <div class="brand-subtitle">A股行情 + 本地模型决策</div>
         </div>
       </div>
@@ -67,6 +67,7 @@
           </el-input>
           <el-button type="primary" :icon="Plus">添加自选</el-button>
           <el-button :icon="Setting">设置</el-button>
+          <el-button :icon="User" @click="$router.push('/login')">登录</el-button>
         </div>
       </el-header>
 
@@ -88,6 +89,7 @@ import {
   Setting,
   Star,
   TrendCharts,
+  User,
   Wallet,
 } from '@element-plus/icons-vue'
 
@@ -119,16 +121,14 @@ const keyword = ref('')
   padding: 0 8px;
 }
 
-.brand-mark {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: #2563eb;
-  color: #fff;
-  font-weight: 800;
-  letter-spacing: 0;
+.brand-logo {
+  width: 52px;
+  height: 52px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: #fff;
+  object-fit: cover;
+  box-shadow: 0 10px 22px -14px rgba(37, 99, 235, 0.7);
 }
 
 .brand-title {

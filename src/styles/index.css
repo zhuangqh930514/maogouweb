@@ -19,6 +19,10 @@ body {
   background: #f3f6fb;
 }
 
+body.auth-body {
+  min-width: 0;
+}
+
 #app {
   min-height: 100vh;
 }
