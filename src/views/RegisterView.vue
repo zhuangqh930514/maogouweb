@@ -7,7 +7,7 @@
         <p>开通个人投研工作台</p>
       </div>
 
-      <el-form class="auth-form" :model="form" label-position="top">
+      <el-form class="auth-form" :model="form" label-position="top" @keyup.enter="register">
         <el-form-item label="用户名">
           <el-input v-model="form.name" size="large" placeholder="请输入用户名">
             <template #prefix>
@@ -34,7 +34,7 @@
           <el-segmented v-model="form.risk" :options="['稳健', '均衡', '进取']" />
         </el-form-item>
 
-        <el-button class="primary-action" type="primary" size="large" @click="register">
+        <el-button class="primary-action" type="primary" size="large" :loading="loading" @click="register">
           创建账户
         </el-button>
 
@@ -57,12 +57,14 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Message, User } from '@element-plus/icons-vue'
+import { register as registerApi } from '../services/auth'
 
 const router = useRouter()
+const loading = ref(false)
 const form = reactive({
   name: '',
   account: '',
@@ -71,9 +73,31 @@ const form = reactive({
   risk: '均衡',
 })
 
-function register() {
-  ElMessage.success('已模拟注册')
-  router.push('/login')
+async function register() {
+  if (!form.name || !form.account || !form.password || !form.confirm) {
+    ElMessage.warning('请完整填写注册信息')
+    return
+  }
+  if (form.password !== form.confirm) {
+    ElMessage.warning('两次输入的密码不一致')
+    return
+  }
+  loading.value = true
+  try {
+    await registerApi({
+      username: form.name,
+      account: form.account,
+      password: form.password,
+      confirmPassword: form.confirm,
+      riskPreference: form.risk,
+    })
+    ElMessage.success('注册成功，已登录')
+    router.push('/')
+  } catch (error) {
+    ElMessage.error(error.message || '注册失败')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

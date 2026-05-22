@@ -30,7 +30,7 @@
         <p>进入猫狗智投工作台</p>
       </div>
 
-      <el-form class="auth-form" :model="form" label-position="top">
+      <el-form class="auth-form" :model="form" label-position="top" @keyup.enter="login">
         <el-form-item label="手机号 / 邮箱">
           <el-input v-model="form.account" size="large" placeholder="请输入手机号或邮箱">
             <template #prefix>
@@ -51,7 +51,7 @@
           <el-button link type="primary">忘记密码</el-button>
         </div>
 
-        <el-button class="primary-action" type="primary" size="large" @click="login">
+        <el-button class="primary-action" type="primary" size="large" :loading="loading" @click="login">
           登录猫狗智投
         </el-button>
 
@@ -65,15 +65,18 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Lock, User } from '@element-plus/icons-vue'
+import { login as loginApi } from '../services/auth'
 
 const router = useRouter()
+const route = useRoute()
+const loading = ref(false)
 const form = reactive({
-  account: 'demo@maogou.ai',
-  password: 'maogou123',
+  account: '',
+  password: '',
   remember: true,
 })
 
@@ -83,9 +86,24 @@ const metrics = [
   { label: '风险状态', value: '稳健', tone: 'safe' },
 ]
 
-function login() {
-  ElMessage.success('已模拟登录')
-  router.push('/')
+async function login() {
+  if (!form.account || !form.password) {
+    ElMessage.warning('请输入账号和密码')
+    return
+  }
+  loading.value = true
+  try {
+    await loginApi({
+      account: form.account,
+      password: form.password,
+    })
+    ElMessage.success('登录成功')
+    router.push(route.query.redirect || '/')
+  } catch (error) {
+    ElMessage.error(error.message || '登录失败')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

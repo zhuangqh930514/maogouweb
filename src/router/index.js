@@ -7,10 +7,11 @@ import ReportsView from '../views/ReportsView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import { isAuthenticated } from '../services/auth'
 
 const routes = [
-  { path: '/login', name: 'login', component: LoginView, meta: { title: '登录猫狗智投', layout: 'auth' } },
-  { path: '/register', name: 'register', component: RegisterView, meta: { title: '注册猫狗智投', layout: 'auth' } },
+  { path: '/login', name: 'login', component: LoginView, meta: { title: '登录猫狗智投', layout: 'auth', public: true } },
+  { path: '/register', name: 'register', component: RegisterView, meta: { title: '注册猫狗智投', layout: 'auth', public: true } },
   { path: '/', name: 'home', component: HomeView, meta: { title: '资讯首页与大盘实时看板' } },
   { path: '/market', name: 'market', component: MarketView, meta: { title: '大盘数据' } },
   { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股管理' } },
@@ -22,6 +23,18 @@ const routes = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+router.beforeEach((to) => {
+  document.title = `${to.meta.title || '猫狗智投'} - 猫狗智投`
+  const loggedIn = isAuthenticated()
+  if (!to.meta.public && !loggedIn) {
+    return {
+      path: '/login',
+      query: { redirect: to.fullPath },
+    }
+  }
+  return true
 })
 
 export default router

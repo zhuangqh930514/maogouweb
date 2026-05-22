@@ -67,7 +67,17 @@
           </el-input>
           <el-button type="primary" :icon="Plus">添加自选</el-button>
           <el-button :icon="Setting">设置</el-button>
-          <el-button :icon="User" @click="$router.push('/login')">登录</el-button>
+          <el-dropdown trigger="click" @command="handleUserCommand">
+            <el-button :icon="User">{{ currentUser?.displayName || currentUser?.username || '账户' }}</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item disabled>
+                  {{ currentUser?.email || currentUser?.phone || '已登录' }}
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </el-header>
 
@@ -79,8 +89,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   DataBoard,
   DocumentChecked,
@@ -92,9 +102,27 @@ import {
   User,
   Wallet,
 } from '@element-plus/icons-vue'
+import { fetchCurrentUser, getStoredUser, logout } from '../services/auth'
 
 const route = useRoute()
+const router = useRouter()
 const keyword = ref('')
+const currentUser = ref(getStoredUser())
+
+onMounted(async () => {
+  try {
+    currentUser.value = await fetchCurrentUser()
+  } catch {
+    currentUser.value = getStoredUser()
+  }
+})
+
+function handleUserCommand(command) {
+  if (command === 'logout') {
+    logout()
+    router.push('/login')
+  }
+}
 </script>
 
 <style scoped>
