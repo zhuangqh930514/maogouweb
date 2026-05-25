@@ -2,16 +2,25 @@
   <div class="page">
     <section class="surface toolbar-surface">
       <div class="surface-body watch-toolbar">
-        <div>
-          <h2 class="surface-title">自选股分组与快速添加</h2>
-          <p class="surface-subtitle">输入股票代码手动添加，支持后续扩展批量导入</p>
-        </div>
-        <el-input v-model="newCode" placeholder="输入股票代码，如 600519" clearable />
-        <el-button type="primary" :icon="Plus" @click="addStock">添加股票</el-button>
-        <el-button :icon="Upload">批量导入</el-button>
-      </div>
-      <div class="watch-tabs">
         <el-segmented v-model="group" :options="['全部', 'AI重点', '高波动', '价值股', '已持仓']" />
+        <div class="toolbar-spacer"></div>
+        <el-autocomplete
+          v-model="newCode"
+          :fetch-suggestions="queryStockSuggestions"
+          value-key="label"
+          placeholder="输入股票代码 / 名称，如 比亚迪"
+          clearable
+          @select="selectSuggestion"
+        >
+          <template #default="{ item }">
+            <div class="stock-suggestion">
+              <strong>{{ item.name }}</strong>
+              <span>{{ item.code }} · {{ item.market }}</span>
+            </div>
+          </template>
+        </el-autocomplete>
+        <el-button type="primary" :icon="Plus" :loading="adding" @click="addStock">添加股票</el-button>
+        <el-button :icon="Upload">批量导入</el-button>
       </div>
     </section>
 
@@ -20,11 +29,17 @@
         <div class="surface-header">
           <div>
             <h2 class="surface-title">自选股列表</h2>
-            <p class="surface-subtitle">价格、涨跌幅、量比和 AI 评分集中展示</p>
           </div>
         </div>
         <div class="surface-body">
-          <el-table :data="filteredStocks" class="compact-table" row-key="code" highlight-current-row @row-click="selected = $event">
+          <el-table
+            v-loading="loading"
+            :data="filteredStocks"
+            class="compact-table"
+            row-key="code"
+            highlight-current-row
+            @row-click="selectStock"
+          >
             <el-table-column label="股票" min-width="150">
               <template #default="{ row }">
                 <strong>{{ row.name }}</strong>
@@ -50,24 +65,26 @@
               </template>
             </el-table-column>
             <el-table-column label="操作" width="150">
-              <template #default>
+              <template #default="{ row }">
                 <el-button link type="primary">详情</el-button>
-                <el-button link type="danger">删除</el-button>
+                <el-button link type="danger" @click.stop="deleteStock(row)">删除</el-button>
               </template>
             </el-table-column>
+            <template #empty>
+              <el-empty description="暂无自选股，请先添加股票代码" />
+            </template>
           </el-table>
         </div>
       </section>
 
-      <section class="surface">
+      <section v-if="selected" class="surface">
         <div class="surface-header">
           <div>
             <h2 class="surface-title">个股详情预览</h2>
-            <p class="surface-subtitle">实时走势、K线、基础财务数据和 AI 建议</p>
           </div>
           <el-tag class="tag-blue" effect="plain">AI评分 {{ selected.aiScore }}</el-tag>
         </div>
-        <div class="surface-body detail-panel">
+        <div v-loading="detailLoading" class="surface-body detail-panel">
           <div class="stock-heading">
             <div>
               <h3>{{ selected.name }} <span>{{ selected.code }}</span></h3>
@@ -81,10 +98,10 @@
 
           <el-tabs v-model="detailTab">
             <el-tab-pane label="K线图" name="kline">
-              <EChart :option="klineOption()" height="260px" />
+              <EChart :option="klineOption(detail?.kline || [])" height="260px" />
             </el-tab-pane>
             <el-tab-pane label="分时图" name="line">
-              <EChart :option="lineOption(selected.name, selectedTrend)" height="260px" />
+              <EChart :option="lineOption(selected.name, intradayValues, intradayTimes)" height="260px" />
             </el-tab-pane>
             <el-tab-pane label="基础财务" name="finance">
               <div class="finance-grid">
@@ -99,43 +116,173 @@
           <AiReportBlock title="AI建议" :text="`当前策略：${selected.advice}。回踩关键均线区间后再确认买点，避免追高。`" tone="green" />
         </div>
       </section>
+      <section v-else class="surface empty-detail">
+        <el-empty description="选择一只自选股后查看实时详情" />
+      </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onMounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Upload } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
 import EChart from '../components/EChart.vue'
 import { klineOption, lineOption } from '../services/chartOptions'
-import { watchStocks } from '../services/mockData'
+import { fetchStockDetail, searchStocks } from '../services/stocks'
+import { addWatchStock, fetchWatchlist, removeWatchStock } from '../services/watchlist'
 
 const group = ref('全部')
 const detailTab = ref('kline')
 const newCode = ref('')
-const selected = ref(watchStocks[2])
+const selectedSuggestion = ref(null)
+const loading = ref(false)
+const detailLoading = ref(false)
+const adding = ref(false)
+const watchStocks = ref([])
+const selected = ref(null)
+const detail = ref(null)
 
 const filteredStocks = computed(() => {
-  if (group.value === 'AI重点') return watchStocks.filter((item) => item.aiScore >= 78)
-  if (group.value === '高波动') return watchStocks.filter((item) => item.volumeRatio >= 1.8)
-  if (group.value === '价值股') return watchStocks.filter((item) => item.pe > 0 && item.pe < 25)
-  if (group.value === '已持仓') return watchStocks.filter((item) => ['600519', '300750', '688981', '600036'].includes(item.code))
-  return watchStocks
+  if (group.value === 'AI重点') return watchStocks.value.filter((item) => item.aiScore >= 78)
+  if (group.value === '高波动') return watchStocks.value.filter((item) => item.volumeRatio >= 1.8)
+  if (group.value === '价值股') return watchStocks.value.filter((item) => item.pe > 0 && item.pe < 25)
+  if (group.value === '已持仓') return watchStocks.value.filter((item) => ['600519', '300750', '688981', '600036'].includes(item.code))
+  return watchStocks.value
 })
 
-const selectedTrend = computed(() => [selected.value.price - 2, selected.value.price - 1, selected.value.price + 1.6, selected.value.price - 0.8, selected.value.price + 2.1, selected.value.price + 0.8])
+const intradayValues = computed(() => (detail.value?.intraday || []).map((point) => Number(point.value)))
+const intradayTimes = computed(() => (detail.value?.intraday || []).map((point) => point.time))
 const financeItems = computed(() => [
-  { label: 'PE(TTM)', value: selected.value.pe || '亏损' },
-  { label: 'PB', value: selected.value.pb },
-  { label: '营收同比', value: `${selected.value.revenueGrowth >= 0 ? '+' : ''}${selected.value.revenueGrowth}%` },
-  { label: '净利同比', value: `${selected.value.profitGrowth >= 0 ? '+' : ''}${selected.value.profitGrowth}%` },
+  { label: 'PE(TTM)', value: selected.value.pe || '暂无' },
+  { label: 'PB', value: selected.value.pb || '暂无' },
+  { label: '营收同比', value: formatPercent(selected.value.revenueGrowth) },
+  { label: '净利同比', value: formatPercent(selected.value.profitGrowth) },
 ])
 
-function addStock() {
-  ElMessage.success(newCode.value ? `已模拟添加 ${newCode.value}` : '请输入股票代码')
+async function loadWatchlist() {
+  loading.value = true
+  try {
+    const list = await fetchWatchlist()
+    watchStocks.value = list.map(normalizeStock)
+    if (!selected.value && watchStocks.value.length) {
+      await selectStock(watchStocks.value[0])
+    } else if (selected.value) {
+      selected.value = watchStocks.value.find((item) => item.code === selected.value.code) || watchStocks.value[0] || null
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '自选股列表获取失败')
+  } finally {
+    loading.value = false
+  }
 }
+
+async function selectStock(row) {
+  selected.value = row
+  detailLoading.value = true
+  try {
+    detail.value = await fetchStockDetail(row.code)
+  } catch (error) {
+    detail.value = null
+    ElMessage.error(error.message || '个股详情获取失败')
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+async function addStock() {
+  const code = selectedSuggestion.value?.code || extractStockCode(newCode.value)
+  if (!code) {
+    ElMessage.warning('请选择匹配到的股票或输入 6 位股票代码')
+    return
+  }
+  adding.value = true
+  try {
+    const stock = normalizeStock(await addWatchStock(code, group.value === '全部' ? '全部' : group.value))
+    newCode.value = ''
+    selectedSuggestion.value = null
+    ElMessage.success(`已添加 ${stock.name || stock.code}`)
+    await loadWatchlist()
+    await selectStock(stock)
+  } catch (error) {
+    ElMessage.error(error.message || '添加自选股失败')
+  } finally {
+    adding.value = false
+  }
+}
+
+async function queryStockSuggestions(query, callback) {
+  selectedSuggestion.value = null
+  const keyword = query.trim()
+  if (!keyword) {
+    callback([])
+    return
+  }
+  try {
+    const results = await searchStocks(keyword, 10)
+    callback(results.map((item) => ({
+      ...item,
+      label: `${item.name} ${item.code}`,
+    })))
+  } catch {
+    callback([])
+  }
+}
+
+function selectSuggestion(item) {
+  selectedSuggestion.value = item
+  newCode.value = `${item.name} ${item.code}`
+}
+
+function extractStockCode(value) {
+  const match = value.trim().match(/\d{6}/)
+  return match ? match[0] : ''
+}
+
+async function deleteStock(row) {
+  try {
+    await ElMessageBox.confirm(`确认删除 ${row.name || row.code}？`, '删除自选股', { type: 'warning' })
+    await removeWatchStock(row.code)
+    ElMessage.success('已删除')
+    if (selected.value?.code === row.code) {
+      selected.value = null
+      detail.value = null
+    }
+    await loadWatchlist()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error(error.message || '删除自选股失败')
+    }
+  }
+}
+
+function normalizeStock(item) {
+  return {
+    ...item,
+    price: Number(item.price || 0),
+    percent: Number(item.percent || 0),
+    volumeRatio: Number(item.volumeRatio || 0),
+    aiScore: Number(item.aiScore || 0),
+    pe: Number(item.pe || 0),
+    pb: Number(item.pb || 0),
+    revenueGrowth: Number(item.revenueGrowth || 0),
+    profitGrowth: Number(item.profitGrowth || 0),
+  }
+}
+
+function formatPercent(value) {
+  const number = Number(value || 0)
+  return `${number >= 0 ? '+' : ''}${number}%`
+}
+
+watch(group, () => {
+  if (filteredStocks.value.length && !filteredStocks.value.some((item) => item.code === selected.value?.code)) {
+    selectStock(filteredStocks.value[0])
+  }
+})
+
+onMounted(loadWatchlist)
 </script>
 
 <style scoped>
@@ -145,13 +292,30 @@ function addStock() {
 
 .watch-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 260px auto auto;
+  grid-template-columns: auto minmax(24px, 1fr) 260px auto auto;
   align-items: center;
   gap: 14px;
 }
 
-.watch-tabs {
-  padding: 0 24px 20px;
+.toolbar-spacer {
+  min-width: 24px;
+}
+
+.stock-suggestion {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.stock-suggestion strong {
+  color: #111827;
+}
+
+.stock-suggestion span {
+  color: #6b7280;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
 }
 
 .watch-layout {
@@ -206,5 +370,12 @@ function addStock() {
   display: block;
   margin-top: 8px;
   font-size: 20px;
+}
+
+.empty-detail {
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>

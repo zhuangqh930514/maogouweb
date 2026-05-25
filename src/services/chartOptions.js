@@ -4,8 +4,9 @@ const blue = '#2563eb'
 const grid = '#e5e7eb'
 const text = '#6b7280'
 
-export function lineOption(seriesName = '上证指数', data = []) {
+export function lineOption(seriesName = '上证指数', data = [], labels = []) {
   const values = data.length ? data : [3128, 3136, 3124, 3142, 3138, 3152, 3148, 3168]
+  const xLabels = labels.length ? labels : ['09:30', '10:00', '10:30', '11:00', '13:30', '14:00', '14:30', '15:00']
   return {
     color: [blue],
     tooltip: { trigger: 'axis' },
@@ -13,7 +14,7 @@ export function lineOption(seriesName = '上证指数', data = []) {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: ['09:30', '10:00', '10:30', '11:00', '13:30', '14:00', '14:30', '15:00'],
+      data: xLabels,
       axisLine: { lineStyle: { color: grid } },
       axisLabel: { color: text },
       axisTick: { show: false },
@@ -40,7 +41,8 @@ export function lineOption(seriesName = '上证指数', data = []) {
 }
 
 export function multiIndexOption(indexes) {
-  const times = ['09:30', '10:00', '10:30', '11:00', '13:30', '14:00', '14:30', '15:00']
+  const maxTrendLength = Math.max(8, ...indexes.map((item) => item.trend?.length || 0))
+  const times = Array.from({ length: maxTrendLength }, (_, index) => String(index + 1))
   return {
     color: ['#2563eb', '#dc2626', '#16a34a', '#7c3aed'],
     tooltip: { trigger: 'axis' },
@@ -71,9 +73,14 @@ export function multiIndexOption(indexes) {
   }
 }
 
-export function klineOption() {
-  const dates = Array.from({ length: 24 }, (_, index) => `05-${String(index + 1).padStart(2, '0')}`)
-  const data = [
+export function klineOption(items = []) {
+  const dates = items.length ? items.map((item) => item.tradeDate?.slice(5) || item.tradeDate) : Array.from({ length: 24 }, (_, index) => `05-${String(index + 1).padStart(2, '0')}`)
+  const data = items.length ? items.map((item) => [
+    Number(item.open),
+    Number(item.close),
+    Number(item.low),
+    Number(item.high),
+  ]) : [
     [67, 69, 65, 70],
     [69, 68, 66, 70],
     [68, 71, 67, 72],

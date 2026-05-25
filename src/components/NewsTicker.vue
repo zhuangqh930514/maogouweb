@@ -1,12 +1,16 @@
 <template>
   <div class="ticker">
-    <div class="ticker-label">滚动资讯</div>
     <div class="ticker-track">
-      <span v-for="item in items" :key="`${item.time}-${item.title}`">
+      <button
+        v-for="item in items"
+        :key="`${item.time}-${item.title}`"
+        class="ticker-item"
+        type="button"
+        @click="emit('select', item)"
+      >
         {{ item.time }} {{ item.title }}
-      </span>
+      </button>
     </div>
-    <el-tag class="tag-blue" effect="plain" round>实时更新</el-tag>
   </div>
 </template>
 
@@ -14,25 +18,19 @@
 defineProps({
   items: { type: Array, required: true },
 })
+
+const emit = defineEmits(['select'])
 </script>
 
 <style scoped>
 .ticker {
   min-height: 48px;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
-  gap: 22px;
   overflow: hidden;
   border-radius: 8px;
   padding: 0 20px;
   background: #0f172a;
-}
-
-.ticker-label {
-  color: #93c5fd;
-  font-size: 13px;
-  font-weight: 700;
 }
 
 .ticker-track {
@@ -44,6 +42,20 @@ defineProps({
   font-weight: 600;
   white-space: nowrap;
   animation: scroll-news 28s linear infinite;
+}
+
+.ticker-item {
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ticker-item:hover {
+  color: #bfdbfe;
 }
 
 @keyframes scroll-news {

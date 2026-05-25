@@ -7,7 +7,7 @@
           <p class="surface-subtitle">定时任务生成结构化报告，支持人工立即触发</p>
         </div>
         <el-segmented v-model="filter" :options="['全部报告', '今日生成', '高风险', '建议买入', '建议减仓']" />
-        <el-button type="primary" :icon="Cpu">立即分析自选股</el-button>
+        <el-button type="primary" :icon="Cpu" :loading="analyzing" @click="runWatchlistAnalysis">立即分析自选股</el-button>
       </div>
     </section>
 
@@ -19,12 +19,12 @@
             <p class="surface-subtitle">按生成时间倒序展示</p>
           </div>
         </div>
-        <div class="surface-body report-list">
+        <div v-loading="loading" class="surface-body report-list">
           <button
-            v-for="report in aiReports"
+            v-for="report in filteredReports"
             :key="report.id"
             class="report-item"
-            :class="{ active: selected.id === report.id }"
+            :class="{ active: selected?.id === report.id }"
             @click="selected = report"
           >
             <span>
@@ -34,10 +34,11 @@
             <span class="report-score" :class="report.score >= 75 ? 'up' : 'muted'">{{ report.score }}</span>
             <small>{{ report.generatedAt.slice(11, 16) }}</small>
           </button>
+          <el-empty v-if="!filteredReports.length" description="暂无 AI 分析报告" />
         </div>
       </section>
 
-      <section class="surface">
+      <section v-if="selected" class="surface">
         <div class="surface-header">
           <div>
             <h2 class="surface-title">{{ selected.stock }} {{ selected.code }} | 结构化分析报告</h2>
@@ -56,18 +57,71 @@
           </div>
         </div>
       </section>
+      <section v-else class="surface empty-report">
+        <el-empty description="生成或选择一份报告后查看详情" />
+      </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import { Cpu, DocumentChecked, Refresh } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
-import { aiReports } from '../services/mockData'
+import { analyzeWatchlist, fetchAiReports } from '../services/ai'
 
 const filter = ref('全部报告')
-const selected = ref(aiReports[0])
+const loading = ref(false)
+const analyzing = ref(false)
+const aiReports = ref([])
+const selected = ref(null)
+
+const filteredReports = computed(() => {
+  if (filter.value === '今日生成') {
+    const today = new Date().toISOString().slice(0, 10)
+    return aiReports.value.filter((item) => item.generatedAt?.startsWith(today))
+  }
+  if (filter.value === '高风险') {
+    return aiReports.value.filter((item) => Number(item.score || 0) < 60)
+  }
+  if (filter.value === '建议买入') {
+    return aiReports.value.filter((item) => /买入|突破|持有/.test(item.advice || ''))
+  }
+  if (filter.value === '建议减仓') {
+    return aiReports.value.filter((item) => /减仓|控制|风险/.test(item.advice || ''))
+  }
+  return aiReports.value
+})
+
+async function loadReports() {
+  loading.value = true
+  try {
+    aiReports.value = await fetchAiReports()
+    selected.value = selected.value
+      ? aiReports.value.find((item) => item.id === selected.value.id) || aiReports.value[0] || null
+      : aiReports.value[0] || null
+  } catch (error) {
+    ElMessage.error(error.message || 'AI 报告获取失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+async function runWatchlistAnalysis() {
+  analyzing.value = true
+  try {
+    await analyzeWatchlist()
+    ElMessage.success('已触发自选股分析')
+    await loadReports()
+  } catch (error) {
+    ElMessage.error(error.message || '触发分析失败')
+  } finally {
+    analyzing.value = false
+  }
+}
+
+onMounted(loadReports)
 </script>
 
 <style scoped>
@@ -149,5 +203,12 @@ const selected = ref(aiReports[0])
   justify-content: flex-end;
   gap: 12px;
   margin-top: 8px;
+}
+
+.empty-report {
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>

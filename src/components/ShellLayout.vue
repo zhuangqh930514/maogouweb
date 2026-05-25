@@ -41,6 +41,10 @@
           <el-icon><Setting /></el-icon>
           <span>模型配置中心</span>
         </el-menu-item>
+        <el-menu-item index="/chat">
+          <el-icon><ChatLineRound /></el-icon>
+          <span>猫狗畅聊</span>
+        </el-menu-item>
       </el-menu>
 
       <div class="model-card">
@@ -57,15 +61,9 @@
       <el-header class="topbar" height="76px">
         <div>
           <h1>{{ route.meta.title }}</h1>
-          <div class="market-clock">交易日 2026-05-21 14:56:32 | A股盘中实时</div>
+          <div class="market-clock">{{ marketClockText }}</div>
         </div>
         <div class="topbar-actions">
-          <el-input v-model="keyword" class="stock-search" placeholder="搜索股票代码 / 名称" clearable>
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-          <el-button type="primary" :icon="Plus">添加自选</el-button>
           <el-button :icon="Setting">设置</el-button>
           <el-dropdown trigger="click" @command="handleUserCommand">
             <el-button :icon="User">{{ currentUser?.displayName || currentUser?.username || '账户' }}</el-button>
@@ -89,13 +87,12 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  ChatLineRound,
   DataBoard,
   DocumentChecked,
-  Plus,
-  Search,
   Setting,
   Star,
   TrendCharts,
@@ -106,14 +103,31 @@ import { fetchCurrentUser, getStoredUser, logout } from '../services/auth'
 
 const route = useRoute()
 const router = useRouter()
-const keyword = ref('')
 const currentUser = ref(getStoredUser())
+const now = ref(new Date())
+let clockTimer = null
+
+const marketClockText = computed(() => {
+  const current = now.value
+  const dayText = isTradeDay(current) ? '交易日' : '非交易日'
+  const statusText = isMarketOpen(current) ? 'A股盘中实时' : marketStatus(current)
+  return `${dayText} ${formatDateTime(current)} | ${statusText}`
+})
 
 onMounted(async () => {
+  clockTimer = window.setInterval(() => {
+    now.value = new Date()
+  }, 1000)
   try {
     currentUser.value = await fetchCurrentUser()
   } catch {
     currentUser.value = getStoredUser()
+  }
+})
+
+onUnmounted(() => {
+  if (clockTimer) {
+    window.clearInterval(clockTimer)
   }
 })
 
@@ -122,6 +136,41 @@ function handleUserCommand(command) {
     logout()
     router.push('/login')
   }
+}
+
+function isTradeDay(date) {
+  const day = date.getDay()
+  return day >= 1 && day <= 5
+}
+
+function isMarketOpen(date) {
+  if (!isTradeDay(date)) {
+    return false
+  }
+  const minutes = date.getHours() * 60 + date.getMinutes()
+  return (minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30) || (minutes >= 13 * 60 && minutes <= 15 * 60)
+}
+
+function marketStatus(date) {
+  if (!isTradeDay(date)) {
+    return 'A股休市'
+  }
+  const minutes = date.getHours() * 60 + date.getMinutes()
+  if (minutes < 9 * 60 + 30) {
+    return 'A股未开盘'
+  }
+  if (minutes > 11 * 60 + 30 && minutes < 13 * 60) {
+    return 'A股午间休市'
+  }
+  if (minutes > 15 * 60) {
+    return 'A股已收盘'
+  }
+  return 'A股休市'
+}
+
+function formatDateTime(date) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 </script>
 
@@ -260,10 +309,6 @@ function handleUserCommand(command) {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.stock-search {
-  width: 238px;
 }
 
 .main {

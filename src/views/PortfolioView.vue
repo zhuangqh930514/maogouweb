@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <div class="section-grid grid-4">
+    <div v-loading="loading" class="section-grid grid-4">
       <MetricCard title="总资产" :value="formatMoney(totalAsset)" :percent="1.86" :trend="[0, 860, 420, 2380, 5460, 8210, totalProfit]" />
       <MetricCard title="持仓市值" :value="formatMoney(totalMarketValue)" :percent="0.72" :trend="[150000, 168000, 172000, 181000, totalMarketValue]" />
       <MetricCard title="浮动盈亏" :value="`${totalProfit >= 0 ? '+' : ''}${formatMoney(totalProfit)}`" :percent="profitRate" :trend="[0, 2400, 1800, 6420, totalProfit]" />
@@ -14,10 +14,10 @@
             <h2 class="surface-title">当前持仓</h2>
             <p class="surface-subtitle">按实时价自动计算市值、成本和浮动盈亏</p>
           </div>
-          <el-button type="primary" :icon="Plus">记录买入</el-button>
+          <el-button type="primary" :icon="Plus" @click="saveTrade">记录买入</el-button>
         </div>
         <div class="surface-body">
-          <el-table :data="positionRows" class="compact-table" row-key="code">
+          <el-table v-loading="loading" :data="positionRows" class="compact-table" row-key="code">
             <el-table-column label="股票" min-width="130">
               <template #default="{ row }">
                 <strong>{{ row.name }}</strong>
@@ -68,7 +68,7 @@
             <el-form-item label="买入时间">
               <el-date-picker v-model="tradeForm.time" type="datetime" placeholder="选择时间" />
             </el-form-item>
-            <el-button type="primary" class="save-button" @click="saveTrade">保存买入记录</el-button>
+            <el-button type="primary" class="save-button" :loading="saving" @click="saveTrade">保存买入记录</el-button>
           </el-form>
           <p class="form-hint">保存后系统会按当前实时价重算浮动盈亏，并对同一股票多笔买入做成本聚合。</p>
         </div>
@@ -90,45 +90,92 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import EChart from '../components/EChart.vue'
 import MetricCard from '../components/MetricCard.vue'
 import { profitOption } from '../services/chartOptions'
-import { formatMoney, getCurrentPrice, positions } from '../services/mockData'
+import { createBuyTrade, fetchPortfolioPositions } from '../services/portfolio'
 
-const positionRows = computed(() =>
-  positions.map((item) => {
-    const currentPrice = getCurrentPrice(item.code)
-    const cost = item.buyPrice * item.quantity
-    const marketValue = currentPrice * item.quantity
-    return {
-      ...item,
-      currentPrice,
-      cost,
-      marketValue,
-      profit: marketValue - cost,
-    }
-  }),
-)
+const loading = ref(false)
+const saving = ref(false)
+const summary = ref({ totalCost: 0, totalMarketValue: 0, totalProfit: 0, profitRate: 0, positions: [] })
+const positionRows = computed(() => (summary.value.positions || []).map(normalizePosition))
 
-const totalMarketValue = computed(() => positionRows.value.reduce((sum, item) => sum + item.marketValue, 0))
-const totalCost = computed(() => positionRows.value.reduce((sum, item) => sum + item.cost, 0))
-const totalProfit = computed(() => totalMarketValue.value - totalCost.value)
+const totalMarketValue = computed(() => Number(summary.value.totalMarketValue || 0))
+const totalCost = computed(() => Number(summary.value.totalCost || 0))
+const totalProfit = computed(() => Number(summary.value.totalProfit || 0))
 const totalAsset = computed(() => totalMarketValue.value + 71490)
-const profitRate = computed(() => (totalProfit.value / totalCost.value) * 100)
+const profitRate = computed(() => Number(summary.value.profitRate || 0))
 
 const tradeForm = reactive({
-  code: '600519',
-  price: 1590.4,
+  code: '',
+  price: 0,
   quantity: 100,
-  time: new Date('2026-05-21 10:18:00'),
+  time: new Date(),
 })
 
-function saveTrade() {
-  ElMessage.success('已模拟保存买入记录')
+async function loadPortfolio() {
+  loading.value = true
+  try {
+    summary.value = await fetchPortfolioPositions()
+  } catch (error) {
+    ElMessage.error(error.message || '持仓数据获取失败')
+  } finally {
+    loading.value = false
+  }
 }
+
+async function saveTrade() {
+  if (!tradeForm.code || !tradeForm.price || !tradeForm.quantity || !tradeForm.time) {
+    ElMessage.warning('请完整填写买入记录')
+    return
+  }
+  saving.value = true
+  try {
+    await createBuyTrade({
+      code: tradeForm.code,
+      buyPrice: tradeForm.price,
+      quantity: tradeForm.quantity,
+      buyTime: formatDateTime(tradeForm.time),
+    })
+    ElMessage.success('已保存买入记录')
+    await loadPortfolio()
+  } catch (error) {
+    ElMessage.error(error.message || '保存买入记录失败')
+  } finally {
+    saving.value = false
+  }
+}
+
+function normalizePosition(item) {
+  return {
+    ...item,
+    buyPrice: Number(item.buyPrice || 0),
+    quantity: Number(item.quantity || 0),
+    currentPrice: Number(item.currentPrice || 0),
+    cost: Number(item.cost || 0),
+    marketValue: Number(item.marketValue || 0),
+    profit: Number(item.profit || 0),
+    profitRate: Number(item.profitRate || 0),
+  }
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString('zh-CN', {
+    minimumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+function formatDateTime(value) {
+  const date = new Date(value)
+  const pad = (number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+onMounted(loadPortfolio)
 </script>
 
 <style scoped>

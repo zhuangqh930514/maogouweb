@@ -5,6 +5,7 @@ import WatchlistView from '../views/WatchlistView.vue'
 import PortfolioView from '../views/PortfolioView.vue'
 import ReportsView from '../views/ReportsView.vue'
 import SettingsView from '../views/SettingsView.vue'
+import ChatView from '../views/ChatView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
 import { isAuthenticated } from '../services/auth'
@@ -18,6 +19,7 @@ const routes = [
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
   { path: '/reports', name: 'reports', component: ReportsView, meta: { title: 'AI 分析报告' } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { title: '模型配置中心' } },
+  { path: '/chat', name: 'chat', component: ChatView, meta: { title: '猫狗畅聊' } },
 ]
 
 const router = createRouter({
