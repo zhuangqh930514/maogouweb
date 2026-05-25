@@ -50,10 +50,10 @@
       <div class="model-card">
         <div class="model-label">本地模型状态</div>
         <div class="model-status">
-          <span class="status-dot"></span>
-          <span>qwen3.6 / OpenAI API</span>
+          <span class="status-dot" :class="{ unknown: !modelConfig }"></span>
+          <span>{{ modelStatusText }}</span>
         </div>
-        <div class="model-url">http://localhost:11434/v1</div>
+        <div class="model-url">{{ modelConfig?.apiBaseUrl || '模型配置未加载' }}</div>
       </div>
     </el-aside>
 
@@ -100,17 +100,27 @@ import {
   Wallet,
 } from '@element-plus/icons-vue'
 import { fetchCurrentUser, getStoredUser, logout } from '../services/auth'
+import { fetchModelConfig } from '../services/settings'
+import { ashareMarketStatus, formatDateTime, isAshareMarketOpen, isAshareTradeDay } from '../utils/marketTime'
 
 const route = useRoute()
 const router = useRouter()
 const currentUser = ref(getStoredUser())
+const modelConfig = ref(null)
 const now = ref(new Date())
 let clockTimer = null
 
+const modelStatusText = computed(() => {
+  if (!modelConfig.value) {
+    return '模型状态未知'
+  }
+  return `${modelConfig.value.modelName || '未配置模型'} / OpenAI API`
+})
+
 const marketClockText = computed(() => {
   const current = now.value
-  const dayText = isTradeDay(current) ? '交易日' : '非交易日'
-  const statusText = isMarketOpen(current) ? 'A股盘中实时' : marketStatus(current)
+  const dayText = isAshareTradeDay(current) ? '交易日' : '非交易日'
+  const statusText = isAshareMarketOpen(current) ? 'A股盘中实时' : ashareMarketStatus(current)
   return `${dayText} ${formatDateTime(current)} | ${statusText}`
 })
 
@@ -122,6 +132,11 @@ onMounted(async () => {
     currentUser.value = await fetchCurrentUser()
   } catch {
     currentUser.value = getStoredUser()
+  }
+  try {
+    modelConfig.value = await fetchModelConfig()
+  } catch {
+    modelConfig.value = null
   }
 })
 
@@ -138,40 +153,6 @@ function handleUserCommand(command) {
   }
 }
 
-function isTradeDay(date) {
-  const day = date.getDay()
-  return day >= 1 && day <= 5
-}
-
-function isMarketOpen(date) {
-  if (!isTradeDay(date)) {
-    return false
-  }
-  const minutes = date.getHours() * 60 + date.getMinutes()
-  return (minutes >= 9 * 60 + 30 && minutes <= 11 * 60 + 30) || (minutes >= 13 * 60 && minutes <= 15 * 60)
-}
-
-function marketStatus(date) {
-  if (!isTradeDay(date)) {
-    return 'A股休市'
-  }
-  const minutes = date.getHours() * 60 + date.getMinutes()
-  if (minutes < 9 * 60 + 30) {
-    return 'A股未开盘'
-  }
-  if (minutes > 11 * 60 + 30 && minutes < 13 * 60) {
-    return 'A股午间休市'
-  }
-  if (minutes > 15 * 60) {
-    return 'A股已收盘'
-  }
-  return 'A股休市'
-}
-
-function formatDateTime(date) {
-  const pad = (value) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
-}
 </script>
 
 <style scoped>
@@ -270,6 +251,10 @@ function formatDateTime(date) {
   height: 8px;
   border-radius: 999px;
   background: #16a34a;
+}
+
+.status-dot.unknown {
+  background: #f59e0b;
 }
 
 .model-url {

@@ -148,6 +148,7 @@ import { lineOption } from '../services/chartOptions'
 import { fetchAiReports } from '../services/ai'
 import { fetchIndexIntraday, fetchLatestNews, fetchMarketIndexes } from '../services/market'
 import { fetchWatchlist } from '../services/watchlist'
+import { isAshareMarketOpen } from '../utils/marketTime'
 
 const marketLoading = ref(false)
 const newsLoading = ref(false)
@@ -249,7 +250,12 @@ onMounted(() => {
   loadNews()
   loadMarket()
   loadHomeExtras()
-  refreshTimer = window.setInterval(loadMarket, 10000)
+  refreshTimer = window.setInterval(() => {
+    if (isAshareMarketOpen()) {
+      loadMarket()
+      loadHomeExtras()
+    }
+  }, 10000)
   newsRefreshTimer = window.setInterval(loadNews, 60000)
 })
 

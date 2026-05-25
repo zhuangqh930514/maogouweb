@@ -17,3 +17,17 @@ export function removeWatchStock(code) {
     method: 'DELETE',
   })
 }
+
+export function removeWatchStocks(codes) {
+  return request('/api/watchlist/batch-delete', {
+    method: 'POST',
+    body: { codes },
+  })
+}
+
+export function reorderWatchStocks(codes) {
+  return request('/api/watchlist/reorder', {
+    method: 'PUT',
+    body: { codes },
+  })
+}

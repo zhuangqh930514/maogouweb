@@ -98,6 +98,7 @@ import EChart from '../components/EChart.vue'
 import MetricCard from '../components/MetricCard.vue'
 import { multiIndexOption } from '../services/chartOptions'
 import { fetchMarketIndexes } from '../services/market'
+import { isAshareMarketOpen } from '../utils/marketTime'
 
 const loading = ref(false)
 const errorMessage = ref('')
@@ -134,7 +135,11 @@ function normalizeIndex(item) {
 
 onMounted(() => {
   loadIndexes()
-  refreshTimer = window.setInterval(loadIndexes, 10000)
+  refreshTimer = window.setInterval(() => {
+    if (isAshareMarketOpen()) {
+      loadIndexes()
+    }
+  }, 10000)
 })
 
 onUnmounted(() => {

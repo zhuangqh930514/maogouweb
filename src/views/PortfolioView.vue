@@ -90,18 +90,20 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import EChart from '../components/EChart.vue'
 import MetricCard from '../components/MetricCard.vue'
 import { profitOption } from '../services/chartOptions'
 import { createBuyTrade, fetchPortfolioPositions } from '../services/portfolio'
+import { isAshareMarketOpen } from '../utils/marketTime'
 
 const loading = ref(false)
 const saving = ref(false)
 const summary = ref({ totalCost: 0, totalMarketValue: 0, totalProfit: 0, profitRate: 0, positions: [] })
 const positionRows = computed(() => (summary.value.positions || []).map(normalizePosition))
+let refreshTimer = null
 
 const totalMarketValue = computed(() => Number(summary.value.totalMarketValue || 0))
 const totalCost = computed(() => Number(summary.value.totalCost || 0))
@@ -175,7 +177,20 @@ function formatDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-onMounted(loadPortfolio)
+onMounted(() => {
+  loadPortfolio()
+  refreshTimer = window.setInterval(() => {
+    if (isAshareMarketOpen()) {
+      loadPortfolio()
+    }
+  }, 10000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    window.clearInterval(refreshTimer)
+  }
+})
 </script>
 
 <style scoped>

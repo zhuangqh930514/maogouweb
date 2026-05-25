@@ -56,8 +56,16 @@
           </div>
           <div class="message-content">
             <div class="message-bubble" :class="{ failed: message.status === 'FAILED' }">
-              <span v-if="message.loading" class="typing-dot"></span>
-              <span>{{ message.content }}</span>
+              <div v-if="message.loading" class="model-loading">
+                <img src="/maogou-logo.png" alt="猫狗智投" />
+                <span class="loading-dots">
+                  <i></i>
+                  <i></i>
+                  <i></i>
+                </span>
+                <span>猫狗投研正在翻资料...</span>
+              </div>
+              <span v-else>{{ message.content }}</span>
             </div>
             <small>{{ formatFullTime(message.createdAt) }}</small>
           </div>
@@ -575,14 +583,63 @@ function pad(value) {
   font-size: 12px;
 }
 
-.typing-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
+.model-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.model-loading img {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: contain;
+  animation: loader-bounce 1.4s ease-in-out infinite;
+}
+
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.loading-dots i {
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
   background: #2563eb;
-  box-shadow: 14px 0 0 #93c5fd, 28px 0 0 #bfdbfe;
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+
+.loading-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.loading-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes loader-bounce {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(4deg);
+  }
+}
+
+@keyframes dot-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .composer {
