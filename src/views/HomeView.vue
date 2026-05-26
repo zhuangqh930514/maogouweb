@@ -19,11 +19,52 @@
       <section class="surface">
         <div class="surface-header">
           <div>
-            <h2 class="surface-title">沪深核心指数实时分时</h2>
+            <h2 class="surface-title">涨跌分布</h2>
           </div>
         </div>
-        <div v-loading="marketLoading" class="surface-body">
-          <EChart :option="lineOption(firstIndex?.name || '上证指数', intradayValues, intradayTimes)" height="320px" />
+        <div v-loading="marketLoading" class="surface-body breadth-panel">
+          <div class="breadth-bars">
+            <div
+              v-for="bucket in marketBreadth.buckets"
+              :key="`${bucket.direction}-${bucket.label}`"
+              class="breadth-bucket"
+            >
+              <strong :class="bucket.direction">{{ bucket.count }}</strong>
+              <div class="bar-wrap">
+                <span
+                  class="bar"
+                  :class="bucket.direction"
+                  :style="{ height: `${barHeight(bucket.count)}px` }"
+                ></span>
+              </div>
+              <em>{{ bucket.label }}</em>
+            </div>
+          </div>
+
+          <div class="breadth-summary">
+            <span>涨跌</span>
+            <strong class="down">跌 {{ marketBreadth.downCount }} 家</strong>
+            <strong class="up">涨 {{ marketBreadth.upCount }} 家</strong>
+            <strong class="flat">平 {{ marketBreadth.flatCount }} 家</strong>
+            <strong class="up">涨停 {{ marketBreadth.limitUpCount }} 家</strong>
+            <strong class="down">跌停 {{ marketBreadth.limitDownCount }} 家</strong>
+          </div>
+          <div class="breadth-ratio">
+            <span class="down" :style="{ flex: marketBreadth.downCount || 1 }"></span>
+            <span class="flat" :style="{ flex: marketBreadth.flatCount || 1 }"></span>
+            <span class="up" :style="{ flex: marketBreadth.upCount || 1 }"></span>
+          </div>
+
+          <div class="breadth-summary funds">
+            <span>暗盘资金</span>
+            <strong class="down">净流出 {{ marketBreadth.fundOutCount }} 家</strong>
+            <strong class="up">净流入 {{ marketBreadth.fundInCount }} 家</strong>
+          </div>
+          <div class="breadth-ratio">
+            <span class="down" :style="{ flex: marketBreadth.fundOutCount || 1 }"></span>
+            <span class="flat" :style="{ flex: marketBreadth.fundFlatCount || 1 }"></span>
+            <span class="up" :style="{ flex: marketBreadth.fundInCount || 1 }"></span>
+          </div>
         </div>
       </section>
 
@@ -141,12 +182,10 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AiReportBlock from '../components/AiReportBlock.vue'
-import EChart from '../components/EChart.vue'
 import MetricCard from '../components/MetricCard.vue'
 import NewsTicker from '../components/NewsTicker.vue'
-import { lineOption } from '../services/chartOptions'
 import { fetchAiReports } from '../services/ai'
-import { fetchIndexIntraday, fetchLatestNews, fetchMarketIndexes } from '../services/market'
+import { fetchLatestNews, fetchMarketBreadth, fetchMarketIndexes } from '../services/market'
 import { fetchWatchlist } from '../services/watchlist'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
@@ -154,17 +193,15 @@ const marketLoading = ref(false)
 const newsLoading = ref(false)
 const errorMessage = ref('')
 const marketIndexes = ref([])
+const marketBreadth = ref(emptyBreadth())
 const newsItems = ref([])
 const watchStocks = ref([])
 const aiReports = ref([])
-const intradayPoints = ref([])
 const newsReaderVisible = ref(false)
 const activeNews = ref(null)
-const firstIndex = computed(() => marketIndexes.value[0])
-const intradayValues = computed(() => intradayPoints.value.map((point) => Number(point.value)))
-const intradayTimes = computed(() => intradayPoints.value.map((point) => point.time))
 const activeNewsUrl = computed(() => normalizeNewsUrl(activeNews.value?.url))
 const latestReport = computed(() => aiReports.value[0])
+const maxBucketCount = computed(() => Math.max(1, ...marketBreadth.value.buckets.map((item) => item.count)))
 let refreshTimer = null
 let newsRefreshTimer = null
 
@@ -185,10 +222,21 @@ async function loadMarket() {
   marketLoading.value = true
   errorMessage.value = ''
   try {
-    const indexes = await fetchMarketIndexes()
-    marketIndexes.value = indexes.map(normalizeIndex)
-    if (indexes[0]?.code) {
-      intradayPoints.value = await fetchIndexIntraday(indexes[0].code)
+    const [indexesResult, breadthResult] = await Promise.allSettled([fetchMarketIndexes(), fetchMarketBreadth()])
+    if (indexesResult.status === 'fulfilled') {
+      marketIndexes.value = indexesResult.value.map(normalizeIndex)
+    }
+    if (breadthResult.status === 'fulfilled') {
+      marketBreadth.value = normalizeBreadth(breadthResult.value)
+    }
+    if (indexesResult.status === 'rejected' && breadthResult.status === 'rejected') {
+      throw indexesResult.reason
+    }
+    if (indexesResult.status === 'rejected') {
+      ElMessage.error(indexesResult.reason?.message || '核心指数数据获取失败')
+    }
+    if (breadthResult.status === 'rejected') {
+      ElMessage.error(breadthResult.reason?.message || '涨跌分布数据获取失败')
     }
   } catch (error) {
     errorMessage.value = error.message || '实时行情数据获取失败'
@@ -196,6 +244,55 @@ async function loadMarket() {
   } finally {
     marketLoading.value = false
   }
+}
+
+function emptyBreadth() {
+  return {
+    buckets: [
+      { label: '>10%', count: 0, direction: 'down' },
+      { label: '10~7', count: 0, direction: 'down' },
+      { label: '7~5', count: 0, direction: 'down' },
+      { label: '5~3', count: 0, direction: 'down' },
+      { label: '3~0', count: 0, direction: 'down' },
+      { label: '0', count: 0, direction: 'flat' },
+      { label: '0~3', count: 0, direction: 'up' },
+      { label: '3~5', count: 0, direction: 'up' },
+      { label: '5~7', count: 0, direction: 'up' },
+      { label: '7~10', count: 0, direction: 'up' },
+      { label: '>10%', count: 0, direction: 'up' },
+    ],
+    upCount: 0,
+    downCount: 0,
+    flatCount: 0,
+    limitUpCount: 0,
+    limitDownCount: 0,
+    fundInCount: 0,
+    fundOutCount: 0,
+    fundFlatCount: 0,
+  }
+}
+
+function normalizeBreadth(value) {
+  return {
+    ...emptyBreadth(),
+    ...value,
+    buckets: (value?.buckets || emptyBreadth().buckets).map((item) => ({
+      ...item,
+      count: Number(item.count || 0),
+    })),
+    upCount: Number(value?.upCount || 0),
+    downCount: Number(value?.downCount || 0),
+    flatCount: Number(value?.flatCount || 0),
+    limitUpCount: Number(value?.limitUpCount || 0),
+    limitDownCount: Number(value?.limitDownCount || 0),
+    fundInCount: Number(value?.fundInCount || 0),
+    fundOutCount: Number(value?.fundOutCount || 0),
+    fundFlatCount: Number(value?.fundFlatCount || 0),
+  }
+}
+
+function barHeight(count) {
+  return Math.max(4, Math.round((Number(count || 0) / maxBucketCount.value) * 118))
 }
 
 async function loadHomeExtras() {
@@ -286,6 +383,119 @@ onUnmounted(() => {
 .news-list::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: #cbd5e1;
+}
+
+.breadth-panel {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.breadth-bars {
+  min-height: 172px;
+  display: grid;
+  grid-template-columns: repeat(11, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.breadth-bucket {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.breadth-bucket strong {
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.breadth-bucket em {
+  color: #6b7280;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.bar-wrap {
+  height: 124px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.bar {
+  width: 28px;
+  min-height: 4px;
+  border-radius: 5px 5px 0 0;
+}
+
+.up {
+  color: #ef3348;
+}
+
+.down {
+  color: #16a34a;
+}
+
+.flat {
+  color: #8b8f98;
+}
+
+.bar.up,
+.breadth-ratio .up {
+  background: #ff2f45;
+}
+
+.bar.down,
+.breadth-ratio .down {
+  background: #16a34a;
+}
+
+.bar.flat,
+.breadth-ratio .flat {
+  background: #9ca3af;
+}
+
+.breadth-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.breadth-summary span {
+  color: #111827;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.breadth-summary strong {
+  font-weight: 800;
+}
+
+.breadth-summary.funds {
+  margin-top: 4px;
+}
+
+.breadth-ratio {
+  height: 10px;
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f1f5f9;
+}
+
+.breadth-ratio span {
+  min-width: 4px;
 }
 
 .news-row {

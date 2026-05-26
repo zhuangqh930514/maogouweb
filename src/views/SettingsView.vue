@@ -85,7 +85,9 @@
               <el-button :icon="VideoPlay" :loading="runningAnalysis" @click="runAnalysisOnce">立即执行一次</el-button>
             </div>
           </el-form>
-          <div class="task-state">Spring Task 已启用：下次执行 2026-05-21 15:30:00</div>
+          <div class="task-state">
+            {{ schedulerStatusText }}
+          </div>
         </div>
       </section>
     </div>
@@ -106,22 +108,6 @@
       </div>
     </section>
 
-    <section class="surface">
-      <div class="surface-header">
-        <div>
-          <h2 class="surface-title">配置中心关联数据</h2>
-          <p class="surface-subtitle">后续接 Spring Boot / MyBatis-Plus 时建议的接口和存储映射</p>
-        </div>
-      </div>
-      <div class="surface-body">
-        <el-table :data="mappingRows" class="compact-table" row-key="name">
-          <el-table-column prop="name" label="配置项" width="180" />
-          <el-table-column prop="table" label="建议存储" width="240" />
-          <el-table-column prop="api" label="后端接口" width="260" />
-          <el-table-column prop="desc" label="说明" />
-        </el-table>
-      </div>
-    </section>
   </div>
 </template>
 
@@ -130,7 +116,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, Connection, Timer, VideoPlay } from '@element-plus/icons-vue'
 import { analyzeWatchlist } from '../services/ai'
-import { fetchModelConfig, saveModelConfig, testModelConnection } from '../services/settings'
+import { fetchModelConfig, fetchSchedulerStatus, saveModelConfig, testModelConnection } from '../services/settings'
 
 const defaultPrompt =
   '你是一名A股投研助手。请基于以下行情、K线、财务和持仓数据，输出 JSON 结构：technicalAnalysis、riskWarning、buySellPoints、score。'
@@ -154,6 +140,7 @@ const saving = ref(false)
 const testing = ref(false)
 const runningAnalysis = ref(false)
 const testResult = ref(null)
+const schedulerStatus = ref(null)
 const modelPresets = [
   {
     key: 'ollama',
@@ -185,22 +172,25 @@ const modelPresets = [
   },
 ]
 const currentPreset = computed(() => modelPresets.find((item) => item.key === provider.value) || modelPresets[0])
+const schedulerStatusText = computed(() => {
+  if (!schedulerStatus.value) {
+    return '正在读取定时任务状态...'
+  }
+  const enabledText = schedulerStatus.value.enabled ? '已启用' : '未启用'
+  return `Spring Task ${enabledText}：下次收盘分析 ${schedulerStatus.value.nextCloseAnalysisTime}`
+})
 const apiKeyPlaceholder = computed(() => {
   if (apiKeyMasked.value) {
     return `已保存 ${apiKeyMasked.value}，留空则继续使用`
   }
   return provider.value === 'deepseek' ? '请输入 DeepSeek API Key' : '本地模型通常可留空'
 })
-const mappingRows = [
-  { name: '模型配置', table: 'system_config / ai_model_config', api: 'GET/PUT /api/settings/model', desc: '保存 baseUrl、modelName、apiKey' },
-  { name: '调度配置', table: 'system_config / scheduler_config', api: 'GET/PUT /api/settings/scheduler', desc: '保存盘中间隔与收盘任务时间' },
-  { name: 'Prompt模板', table: 'ai_prompt_template', api: 'GET/PUT /api/settings/prompt', desc: '用于封装自选股行情和K线数据' },
-]
 
 async function loadConfig() {
   loading.value = true
   try {
-    const config = await fetchModelConfig()
+    const [config, status] = await Promise.all([fetchModelConfig(), fetchSchedulerStatus()])
+    schedulerStatus.value = status
     apiKeyMasked.value = config.apiKeyMasked || ''
     Object.assign(form, {
       ...config,
@@ -228,6 +218,7 @@ async function saveConfig() {
     })
     closeTime.value = form.closeTime
     ElMessage.success('配置已保存')
+    schedulerStatus.value = await fetchSchedulerStatus()
   } catch (error) {
     ElMessage.error(error.message || '保存配置失败')
   } finally {

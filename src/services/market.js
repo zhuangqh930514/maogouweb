@@ -8,6 +8,10 @@ export function fetchMarketIndexes() {
   return request('/api/market/indexes')
 }
 
+export function fetchMarketBreadth() {
+  return request('/api/market/breadth')
+}
+
 export function fetchIndexIntraday(code) {
   return request(`/api/market/indexes/${encodeURIComponent(code)}/intraday`)
 }

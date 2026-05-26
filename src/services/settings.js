@@ -17,3 +17,7 @@ export function testModelConnection(payload) {
     body: payload,
   })
 }
+
+export function fetchSchedulerStatus() {
+  return request('/api/settings/scheduler/status')
+}
