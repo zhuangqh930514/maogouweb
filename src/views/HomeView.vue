@@ -98,13 +98,14 @@
       <section class="surface">
         <div class="surface-header">
           <div>
-            <h2 class="surface-title">自选股与持仓盈亏</h2>
-            <p class="surface-subtitle">实时价驱动持仓浮动盈亏计算</p>
+            <h2 class="surface-title">市场前十热度股票</h2>
+            <p class="surface-subtitle">按全市场主力净流入热度排序展示</p>
           </div>
-          <el-button type="primary" :icon="Plus">添加自选</el-button>
+          <el-tag class="tag-red" effect="plain">TOP 10</el-tag>
         </div>
         <div class="surface-body">
-          <el-table :data="watchStocks.slice(0, 4)" class="compact-table" row-key="code">
+          <el-table :data="marketHotStocks" class="compact-table" row-key="code">
+            <el-table-column prop="rank" label="排名" width="80" />
             <el-table-column prop="name" label="股票" min-width="120">
               <template #default="{ row }">
                 <strong>{{ row.name }}</strong>
@@ -119,17 +120,17 @@
             <el-table-column label="涨跌幅" width="110">
               <template #default="{ row }">
                 <span :class="row.percent >= 0 ? 'up' : 'down'" class="mono">
-                  {{ row.percent >= 0 ? '+' : '' }}{{ row.percent.toFixed(2) }}%
+                  {{ formatPercent(row.percent) }}
                 </span>
               </template>
             </el-table-column>
-            <el-table-column prop="advice" label="AI建议" min-width="140">
+            <el-table-column label="净流入" min-width="150">
               <template #default="{ row }">
-                <el-tag class="tag-blue" effect="plain">{{ row.advice }}</el-tag>
+                <span :class="row.netInflow >= 0 ? 'up' : 'down'">{{ formatNetInflow(row.netInflow) }}</span>
               </template>
             </el-table-column>
             <template #empty>
-              <el-empty description="暂无自选股" />
+              <el-empty description="暂无热度股票" />
             </template>
           </el-table>
         </div>
@@ -180,14 +181,12 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import AiReportBlock from '../components/AiReportBlock.vue'
 import MetricCard from '../components/MetricCard.vue'
 import NewsTicker from '../components/NewsTicker.vue'
 import { fetchAiReports } from '../services/ai'
-import { fetchLatestNews, fetchMarketBreadth, fetchMarketIndexes } from '../services/market'
-import { fetchWatchlist } from '../services/watchlist'
+import { fetchLatestNews, fetchMarketBreadth, fetchMarketIndexes, fetchMarketHotStocks } from '../services/market'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
 const marketLoading = ref(false)
@@ -196,7 +195,7 @@ const errorMessage = ref('')
 const marketIndexes = ref([])
 const marketBreadth = ref(emptyBreadth())
 const newsItems = ref([])
-const watchStocks = ref([])
+const marketHotStocks = ref([])
 const aiReports = ref([])
 const newsReaderVisible = ref(false)
 const activeNews = ref(null)
@@ -305,11 +304,11 @@ function barHeight(count) {
 
 async function loadHomeExtras() {
   try {
-    const [stocks, reports] = await Promise.all([fetchWatchlist(), fetchAiReports()])
-    watchStocks.value = stocks.map(normalizeStock)
+    const [stocks, reports] = await Promise.all([fetchMarketHotStocks(10), fetchAiReports()])
+    marketHotStocks.value = stocks.map(normalizeHotStock)
     aiReports.value = reports
   } catch (error) {
-    ElMessage.error(error.message || '首页自选股/AI 摘要获取失败')
+    ElMessage.error(error.message || '首页热度股票/AI 摘要获取失败')
   }
 }
 
@@ -323,13 +322,27 @@ function normalizeIndex(item) {
   }
 }
 
-function normalizeStock(item) {
+function normalizeHotStock(item) {
   return {
     ...item,
+    rank: Number(item.rank || 0),
     price: Number(item.price || 0),
     percent: Number(item.percent || 0),
-    volumeRatio: Number(item.volumeRatio || 0),
+    netInflow: Number(item.netInflow || 0),
   }
+}
+
+function formatPercent(value) {
+  const number = Number(value || 0)
+  return `${number >= 0 ? '+' : ''}${number.toFixed(2)}%`
+}
+
+function formatNetInflow(value) {
+  const number = Number(value || 0)
+  if (!number) {
+    return '资金持平'
+  }
+  return `${number > 0 ? '净流入' : '净流出'} ${Math.abs(number / 100000000).toFixed(2)}亿`
 }
 
 function openNews(item) {

@@ -16,6 +16,10 @@ export function fetchSectorHeatmap() {
   return request('/api/market/sectors/heatmap')
 }
 
+export function fetchMarketHotStocks(limit = 10) {
+  return request(`/api/market/hot-stocks?limit=${limit}`)
+}
+
 export function fetchSectorHotStocks(code, limit = 10) {
   return request(`/api/market/sectors/${encodeURIComponent(code)}/hot-stocks?limit=${limit}`)
 }

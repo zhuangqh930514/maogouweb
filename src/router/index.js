@@ -15,9 +15,9 @@ import { isAuthenticated } from '../services/auth'
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { title: '登录猫狗智投', layout: 'auth', public: true } },
   { path: '/register', name: 'register', component: RegisterView, meta: { title: '注册猫狗智投', layout: 'auth', public: true } },
-  { path: '/', name: 'home', component: HomeView, meta: { title: '资讯首页与大盘实时看板' } },
+  { path: '/', name: 'home', component: HomeView, meta: { title: '资讯首页' } },
   { path: '/market', name: 'market', component: MarketView, meta: { title: '大盘数据' } },
-  { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股管理' } },
+  { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股' } },
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
   { path: '/reports', name: 'reports', component: ReportsView, meta: { title: 'AI 分析报告' } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { title: '模型配置中心' } },

@@ -2,10 +2,6 @@
   <div class="page">
     <section class="surface toolbar-surface">
       <div class="surface-body reports-toolbar">
-        <div>
-          <h2 class="surface-title">AI 分析任务与报告检索</h2>
-          <p class="surface-subtitle">定时任务生成结构化报告，支持人工立即触发</p>
-        </div>
         <el-segmented v-model="filter" :options="['全部报告', '今日生成', '高风险', '建议买入', '建议减仓']" />
         <el-button type="primary" :icon="Cpu" :loading="analyzing" @click="runWatchlistAnalysis">立即分析自选股</el-button>
       </div>
@@ -126,9 +122,9 @@ onMounted(loadReports)
 
 <style scoped>
 .reports-toolbar {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) auto auto;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 18px;
 }
 
