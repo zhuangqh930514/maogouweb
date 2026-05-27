@@ -3,7 +3,7 @@
     <NewsTicker :items="newsItems" @select="openNews" />
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false" />
 
-    <div v-loading="marketLoading" class="section-grid grid-4">
+    <div v-loading="marketLoading" class="home-index-grid">
       <MetricCard
         v-for="item in marketIndexes"
         :key="item.code"
@@ -12,6 +12,7 @@
         :change="item.change"
         :percent="item.percent"
         :trend="item.trend"
+        compact
       />
     </div>
 
@@ -203,6 +204,7 @@ const activeNewsUrl = computed(() => normalizeNewsUrl(activeNews.value?.url))
 const latestReport = computed(() => aiReports.value[0])
 const maxBucketCount = computed(() => Math.max(1, ...marketBreadth.value.buckets.map((item) => item.count)))
 let refreshTimer = null
+let breadthRefreshTimer = null
 let newsRefreshTimer = null
 
 async function loadNews() {
@@ -222,27 +224,33 @@ async function loadMarket() {
   marketLoading.value = true
   errorMessage.value = ''
   try {
-    const [indexesResult, breadthResult] = await Promise.allSettled([fetchMarketIndexes(), fetchMarketBreadth()])
-    if (indexesResult.status === 'fulfilled') {
-      marketIndexes.value = indexesResult.value.map(normalizeIndex)
-    }
-    if (breadthResult.status === 'fulfilled') {
-      marketBreadth.value = normalizeBreadth(breadthResult.value)
-    }
+    const [indexesResult, breadthResult] = await Promise.allSettled([loadMarketIndexes(), loadMarketBreadth()])
     if (indexesResult.status === 'rejected' && breadthResult.status === 'rejected') {
       throw indexesResult.reason
-    }
-    if (indexesResult.status === 'rejected') {
-      ElMessage.error(indexesResult.reason?.message || '核心指数数据获取失败')
-    }
-    if (breadthResult.status === 'rejected') {
-      ElMessage.error(breadthResult.reason?.message || '涨跌分布数据获取失败')
     }
   } catch (error) {
     errorMessage.value = error.message || '实时行情数据获取失败'
     ElMessage.error(errorMessage.value)
   } finally {
     marketLoading.value = false
+  }
+}
+
+async function loadMarketIndexes() {
+  try {
+    marketIndexes.value = (await fetchMarketIndexes()).map(normalizeIndex)
+  } catch (error) {
+    ElMessage.error(error?.message || '核心指数数据获取失败')
+    throw error
+  }
+}
+
+async function loadMarketBreadth() {
+  try {
+    marketBreadth.value = normalizeBreadth(await fetchMarketBreadth())
+  } catch (error) {
+    ElMessage.error(error?.message || '涨跌分布数据获取失败')
+    throw error
   }
 }
 
@@ -349,16 +357,24 @@ onMounted(() => {
   loadHomeExtras()
   refreshTimer = window.setInterval(() => {
     if (isAshareMarketOpen()) {
-      loadMarket()
+      loadMarketIndexes()
       loadHomeExtras()
     }
   }, 10000)
+  breadthRefreshTimer = window.setInterval(() => {
+    if (isAshareMarketOpen()) {
+      loadMarketBreadth()
+    }
+  }, 60000)
   newsRefreshTimer = window.setInterval(loadNews, 60000)
 })
 
 onUnmounted(() => {
   if (refreshTimer) {
     window.clearInterval(refreshTimer)
+  }
+  if (breadthRefreshTimer) {
+    window.clearInterval(breadthRefreshTimer)
   }
   if (newsRefreshTimer) {
     window.clearInterval(newsRefreshTimer)
@@ -367,6 +383,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.home-index-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .news-list {
   display: flex;
   flex-direction: column;

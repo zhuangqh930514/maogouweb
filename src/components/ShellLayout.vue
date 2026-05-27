@@ -41,6 +41,14 @@
           <el-icon><Setting /></el-icon>
           <span>模型配置中心</span>
         </el-menu-item>
+        <el-menu-item index="/prompt-templates">
+          <el-icon><Document /></el-icon>
+          <span>提示词管理</span>
+        </el-menu-item>
+        <el-menu-item index="/automation-tasks">
+          <el-icon><Timer /></el-icon>
+          <span>自动化任务</span>
+        </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatLineRound /></el-icon>
           <span>猫狗畅聊</span>
@@ -92,9 +100,11 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   ChatLineRound,
   DataBoard,
+  Document,
   DocumentChecked,
   Setting,
   Star,
+  Timer,
   TrendCharts,
   User,
   Wallet,

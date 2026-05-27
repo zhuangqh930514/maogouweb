@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <div class="section-grid settings-layout">
+    <div class="settings-layout">
       <section class="surface">
         <div class="surface-header">
           <div>
@@ -56,57 +56,7 @@
         </div>
       </section>
 
-      <section class="surface">
-        <div class="surface-header">
-          <div>
-            <h2 class="surface-title">定时分析任务</h2>
-            <p class="surface-subtitle">Spring Task 拉取自选股行情并调用本地模型</p>
-          </div>
-        </div>
-        <div class="surface-body">
-          <el-form :model="form" label-position="top">
-            <div class="form-grid three">
-              <el-form-item label="盘中分析间隔">
-                <el-input-number v-model="form.intradayInterval" :min="5" :step="5" controls-position="right" />
-              </el-form-item>
-              <el-form-item label="收盘后分析时间">
-                <el-time-picker v-model="closeTime" format="HH:mm" value-format="HH:mm" />
-              </el-form-item>
-              <el-form-item label="分析范围">
-                <el-select v-model="form.analysisScope">
-                  <el-option label="全部自选股" value="全部自选股" />
-                  <el-option label="仅已持仓" value="仅已持仓" />
-                  <el-option label="AI重点分组" value="AI重点分组" />
-                </el-select>
-              </el-form-item>
-            </div>
-            <div class="form-actions">
-              <el-button type="primary" :icon="Timer" :loading="saving" @click="saveConfig">保存任务配置</el-button>
-              <el-button :icon="VideoPlay" :loading="runningAnalysis" @click="runAnalysisOnce">立即执行一次</el-button>
-            </div>
-          </el-form>
-          <div class="task-state">
-            {{ schedulerStatusText }}
-          </div>
-        </div>
-      </section>
     </div>
-
-    <section class="surface">
-      <div class="surface-header">
-        <div>
-          <h2 class="surface-title">分析 Prompt 模板</h2>
-          <p class="surface-subtitle">将行情、K线、财务和持仓数据封装为结构化推理输入</p>
-        </div>
-      </div>
-      <div class="surface-body">
-        <el-input v-model="form.promptTemplate" type="textarea" :rows="6" />
-        <div class="form-actions prompt-actions">
-          <el-button @click="restoreDefaultPrompt">恢复默认模板</el-button>
-          <el-button type="primary" :loading="saving" @click="saveConfig">保存模板</el-button>
-        </div>
-      </div>
-    </section>
 
   </div>
 </template>
@@ -114,12 +64,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Check, Connection, Timer, VideoPlay } from '@element-plus/icons-vue'
-import { analyzeWatchlist } from '../services/ai'
-import { fetchModelConfig, fetchSchedulerStatus, saveModelConfig, testModelConnection } from '../services/settings'
+import { Check, Connection } from '@element-plus/icons-vue'
+import { fetchModelConfig, saveModelConfig, testModelConnection } from '../services/settings'
 
-const defaultPrompt =
-  '你是一名A股投研助手。请基于以下行情、K线、财务和持仓数据，输出 JSON 结构：technicalAnalysis、riskWarning、buySellPoints、score。'
 const form = reactive({
   apiBaseUrl: '',
   modelName: '',
@@ -130,7 +77,6 @@ const form = reactive({
   intradayInterval: 30,
   closeTime: '15:30',
   analysisScope: '全部自选股',
-  promptTemplate: defaultPrompt,
 })
 const closeTime = ref(form.closeTime)
 const provider = ref('ollama')
@@ -138,9 +84,7 @@ const apiKeyMasked = ref('')
 const loading = ref(false)
 const saving = ref(false)
 const testing = ref(false)
-const runningAnalysis = ref(false)
 const testResult = ref(null)
-const schedulerStatus = ref(null)
 const modelPresets = [
   {
     key: 'ollama',
@@ -172,13 +116,6 @@ const modelPresets = [
   },
 ]
 const currentPreset = computed(() => modelPresets.find((item) => item.key === provider.value) || modelPresets[0])
-const schedulerStatusText = computed(() => {
-  if (!schedulerStatus.value) {
-    return '正在读取定时任务状态...'
-  }
-  const enabledText = schedulerStatus.value.enabled ? '已启用' : '未启用'
-  return `Spring Task ${enabledText}：下次收盘分析 ${schedulerStatus.value.nextCloseAnalysisTime}`
-})
 const apiKeyPlaceholder = computed(() => {
   if (apiKeyMasked.value) {
     return `已保存 ${apiKeyMasked.value}，留空则继续使用`
@@ -189,13 +126,11 @@ const apiKeyPlaceholder = computed(() => {
 async function loadConfig() {
   loading.value = true
   try {
-    const [config, status] = await Promise.all([fetchModelConfig(), fetchSchedulerStatus()])
-    schedulerStatus.value = status
+    const config = await fetchModelConfig()
     apiKeyMasked.value = config.apiKeyMasked || ''
     Object.assign(form, {
       ...config,
       apiKey: '',
-      promptTemplate: config.promptTemplate || defaultPrompt,
     })
     closeTime.value = form.closeTime
     provider.value = inferProvider(config)
@@ -214,11 +149,9 @@ async function saveConfig() {
     Object.assign(form, {
       ...saved,
       apiKey: '',
-      promptTemplate: saved.promptTemplate || form.promptTemplate,
     })
     closeTime.value = form.closeTime
     ElMessage.success('配置已保存')
-    schedulerStatus.value = await fetchSchedulerStatus()
   } catch (error) {
     ElMessage.error(error.message || '保存配置失败')
   } finally {
@@ -259,22 +192,6 @@ function buildPayload() {
   }
 }
 
-function restoreDefaultPrompt() {
-  form.promptTemplate = defaultPrompt
-}
-
-async function runAnalysisOnce() {
-  runningAnalysis.value = true
-  try {
-    await analyzeWatchlist()
-    ElMessage.success('已触发自选股 AI 分析')
-  } catch (error) {
-    ElMessage.error(error.message || '触发分析失败')
-  } finally {
-    runningAnalysis.value = false
-  }
-}
-
 function inferProvider(config) {
   const baseUrl = (config.apiBaseUrl || '').toLowerCase()
   const modelName = (config.modelName || '').toLowerCase()
@@ -295,7 +212,8 @@ onMounted(loadConfig)
 
 <style scoped>
 .settings-layout {
-  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.9fr);
+  display: grid;
+  gap: 18px;
 }
 
 .form-grid {
@@ -373,7 +291,4 @@ onMounted(loadConfig)
   font-weight: 700;
 }
 
-.prompt-actions {
-  justify-content: flex-end;
-}
 </style>
