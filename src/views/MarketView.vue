@@ -101,6 +101,20 @@
           <el-table-column label="成交额" width="130">
             <template #default="{ row }">{{ formatAmount(row.amount) }}</template>
           </el-table-column>
+          <el-table-column label="操作" width="110" align="right">
+            <template #default="{ row }">
+              <el-button
+                size="small"
+                :type="isInWatchlist(row.code) ? 'info' : 'primary'"
+                :plain="!isInWatchlist(row.code)"
+                :disabled="isInWatchlist(row.code)"
+                :loading="isAddingWatchlist(row.code)"
+                @click="handleAddWatchStock(row)"
+              >
+                {{ isInWatchlist(row.code) ? '已加入' : '加入自选' }}
+              </el-button>
+            </template>
+          </el-table-column>
           <template #empty>
             <el-empty description="点击上方任意板块查看热门股票" />
           </template>
@@ -116,6 +130,7 @@ import { ElMessage } from 'element-plus'
 import EChart from '../components/EChart.vue'
 import { klineOption, lineOption } from '../services/chartOptions'
 import { fetchIndexIntraday, fetchIndexKline, fetchMarketIndexes, fetchSectorHeatmap, fetchSectorHotStocks } from '../services/market'
+import { addWatchStock, fetchWatchlist } from '../services/watchlist'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
 const loading = ref(false)
@@ -141,7 +156,12 @@ const periodOptions = [
 const sectorHeatmapItems = ref([])
 const selectedSector = ref(null)
 const sectorHotStocks = ref([])
-let refreshTimer = null
+const watchlistCodes = ref(new Set())
+const addingCodes = ref(new Set())
+const INDEX_REFRESH_MS = 15000
+const SECTOR_REFRESH_MS = 60000
+let indexRefreshTimer = null
+let sectorRefreshTimer = null
 
 async function loadIndexes() {
   loading.value = true
@@ -162,7 +182,10 @@ async function loadIndexes() {
   }
 }
 
-async function loadSectorHeatmap() {
+async function loadSectorHeatmap({ silent = false } = {}) {
+  if (sectorLoading.value) {
+    return
+  }
   sectorLoading.value = true
   try {
     const data = await fetchSectorHeatmap()
@@ -179,7 +202,9 @@ async function loadSectorHeatmap() {
       selectedSector.value = sectorHeatmapItems.value.find((item) => item.code === selectedSector.value.code) || selectedSector.value
     }
   } catch (error) {
-    ElMessage.error(error.message || '板块热力图获取失败')
+    if (!silent || !sectorHeatmapItems.value.length) {
+      ElMessage.error(error.message || '板块热力图获取失败')
+    }
   } finally {
     sectorLoading.value = false
   }
@@ -209,6 +234,46 @@ async function selectSector(item) {
 async function selectIndex(item) {
   selectedIndex.value = item
   await loadSelectedKline()
+}
+
+async function loadWatchlistCodes() {
+  try {
+    const list = await fetchWatchlist()
+    watchlistCodes.value = new Set(list.map((item) => item.code))
+  } catch (error) {
+    ElMessage.error(error.message || '自选股状态获取失败')
+  }
+}
+
+function isInWatchlist(code) {
+  return watchlistCodes.value.has(code)
+}
+
+function isAddingWatchlist(code) {
+  return addingCodes.value.has(code)
+}
+
+async function handleAddWatchStock(row) {
+  const code = row?.code
+  if (!code || isInWatchlist(code) || isAddingWatchlist(code)) {
+    return
+  }
+  const nextAddingCodes = new Set(addingCodes.value)
+  nextAddingCodes.add(code)
+  addingCodes.value = nextAddingCodes
+  try {
+    const stock = await addWatchStock(code, '全部')
+    const nextWatchlistCodes = new Set(watchlistCodes.value)
+    nextWatchlistCodes.add(code)
+    watchlistCodes.value = nextWatchlistCodes
+    ElMessage.success(`已加入自选：${stock?.name || row.name || code}`)
+  } catch (error) {
+    ElMessage.error(error.message || '加入自选失败')
+  } finally {
+    const nextAddingCodesAfter = new Set(addingCodes.value)
+    nextAddingCodesAfter.delete(code)
+    addingCodes.value = nextAddingCodesAfter
+  }
 }
 
 async function loadSelectedKline() {
@@ -284,19 +349,27 @@ function formatAmount(value) {
 onMounted(() => {
   loadIndexes()
   loadSectorHeatmap()
-  refreshTimer = window.setInterval(() => {
+  loadWatchlistCodes()
+  indexRefreshTimer = window.setInterval(() => {
     if (isAshareMarketOpen()) {
       loadIndexes()
-      loadSectorHeatmap()
     }
-  }, 10000)
+  }, INDEX_REFRESH_MS)
+  sectorRefreshTimer = window.setInterval(() => {
+    if (isAshareMarketOpen()) {
+      loadSectorHeatmap({ silent: true })
+    }
+  }, SECTOR_REFRESH_MS)
 })
 
 watch(chartPeriod, loadSelectedKline)
 
 onUnmounted(() => {
-  if (refreshTimer) {
-    window.clearInterval(refreshTimer)
+  if (indexRefreshTimer) {
+    window.clearInterval(indexRefreshTimer)
+  }
+  if (sectorRefreshTimer) {
+    window.clearInterval(sectorRefreshTimer)
   }
 })
 </script>

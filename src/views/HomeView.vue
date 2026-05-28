@@ -129,6 +129,20 @@
                 <span :class="row.netInflow >= 0 ? 'up' : 'down'">{{ formatNetInflow(row.netInflow) }}</span>
               </template>
             </el-table-column>
+            <el-table-column label="操作" width="110" align="right">
+              <template #default="{ row }">
+                <el-button
+                  size="small"
+                  :type="isInWatchlist(row.code) ? 'info' : 'primary'"
+                  :plain="!isInWatchlist(row.code)"
+                  :disabled="isInWatchlist(row.code)"
+                  :loading="isAddingWatchlist(row.code)"
+                  @click="handleAddWatchStock(row)"
+                >
+                  {{ isInWatchlist(row.code) ? '已加入' : '加入自选' }}
+                </el-button>
+              </template>
+            </el-table-column>
             <template #empty>
               <el-empty description="暂无热度股票" />
             </template>
@@ -187,6 +201,7 @@ import MetricCard from '../components/MetricCard.vue'
 import NewsTicker from '../components/NewsTicker.vue'
 import { fetchAiReports } from '../services/ai'
 import { fetchLatestNews, fetchMarketBreadth, fetchMarketIndexes, fetchMarketHotStocks } from '../services/market'
+import { addWatchStock, fetchWatchlist } from '../services/watchlist'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
 const marketLoading = ref(false)
@@ -197,6 +212,8 @@ const marketBreadth = ref(emptyBreadth())
 const newsItems = ref([])
 const marketHotStocks = ref([])
 const aiReports = ref([])
+const watchlistCodes = ref(new Set())
+const addingCodes = ref(new Set())
 const newsReaderVisible = ref(false)
 const activeNews = ref(null)
 const activeNewsUrl = computed(() => normalizeNewsUrl(activeNews.value?.url))
@@ -312,6 +329,46 @@ async function loadHomeExtras() {
   }
 }
 
+async function loadWatchlistCodes() {
+  try {
+    const list = await fetchWatchlist()
+    watchlistCodes.value = new Set(list.map((item) => item.code))
+  } catch (error) {
+    ElMessage.error(error.message || '自选股状态获取失败')
+  }
+}
+
+function isInWatchlist(code) {
+  return watchlistCodes.value.has(code)
+}
+
+function isAddingWatchlist(code) {
+  return addingCodes.value.has(code)
+}
+
+async function handleAddWatchStock(row) {
+  const code = row?.code
+  if (!code || isInWatchlist(code) || isAddingWatchlist(code)) {
+    return
+  }
+  const nextAddingCodes = new Set(addingCodes.value)
+  nextAddingCodes.add(code)
+  addingCodes.value = nextAddingCodes
+  try {
+    const stock = await addWatchStock(code, '全部')
+    const nextWatchlistCodes = new Set(watchlistCodes.value)
+    nextWatchlistCodes.add(code)
+    watchlistCodes.value = nextWatchlistCodes
+    ElMessage.success(`已加入自选：${stock?.name || row.name || code}`)
+  } catch (error) {
+    ElMessage.error(error.message || '加入自选失败')
+  } finally {
+    const nextAddingCodesAfter = new Set(addingCodes.value)
+    nextAddingCodesAfter.delete(code)
+    addingCodes.value = nextAddingCodesAfter
+  }
+}
+
 function normalizeIndex(item) {
   return {
     ...item,
@@ -368,6 +425,7 @@ onMounted(() => {
   loadNews()
   loadMarket()
   loadHomeExtras()
+  loadWatchlistCodes()
   refreshTimer = window.setInterval(() => {
     if (isAshareMarketOpen()) {
       loadMarketIndexes()

@@ -2,9 +2,8 @@
   <div class="page">
     <section class="surface">
       <div class="surface-header">
-        <div>
+        <div class="prompt-header-copy">
           <h2 class="surface-title">提示词管理</h2>
-          <p class="surface-subtitle">维护 AI 分析 Prompt 模板，支持标题和内容的增删查改</p>
         </div>
         <el-button type="primary" :icon="Plus" @click="startCreate">新增提示词</el-button>
       </div>
@@ -167,6 +166,12 @@ onMounted(() => loadTemplates())
 </script>
 
 <style scoped>
+.prompt-header-copy {
+  min-height: 52px;
+  display: flex;
+  align-items: flex-start;
+}
+
 .prompt-layout {
   display: grid;
   grid-template-columns: minmax(360px, 0.9fr) minmax(420px, 1.1fr);

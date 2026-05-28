@@ -19,7 +19,7 @@ const routes = [
   { path: '/market', name: 'market', component: MarketView, meta: { title: '大盘数据' } },
   { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股' } },
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
-  { path: '/reports', name: 'reports', component: ReportsView, meta: { title: 'AI 分析报告' } },
+  { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告' } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { title: '模型配置中心' } },
   { path: '/prompt-templates', name: 'promptTemplates', component: PromptTemplatesView, meta: { title: '提示词管理' } },
   { path: '/automation-tasks', name: 'automationTasks', component: AutomationTasksView, meta: { title: '自动化任务' } },
