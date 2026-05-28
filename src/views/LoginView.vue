@@ -125,17 +125,6 @@ async function login() {
   justify-content: center;
   padding: 64px 76px;
   color: #fff;
-  overflow: hidden;
-}
-
-.auth-hero::after {
-  content: "";
-  position: absolute;
-  inset: auto -140px -180px auto;
-  width: 420px;
-  height: 420px;
-  border: 1px solid rgba(147, 164, 199, 0.28);
-  border-radius: 50%;
 }
 
 .hero-topline {
