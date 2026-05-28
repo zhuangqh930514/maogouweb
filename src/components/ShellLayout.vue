@@ -12,6 +12,7 @@
       <el-menu
         class="nav-menu"
         :default-active="route.path"
+        :default-openeds="defaultOpeneds"
         background-color="transparent"
         text-color="#BAC7E0"
         active-text-color="#FFFFFF"
@@ -33,17 +34,17 @@
           <el-icon><Wallet /></el-icon>
           <span>持仓记录</span>
         </el-menu-item>
-        <el-menu-item index="/reports">
-          <el-icon><DocumentChecked /></el-icon>
-          <span>AI 分析报告</span>
-        </el-menu-item>
+        <el-sub-menu index="ai-analysis">
+          <template #title>
+            <el-icon><DocumentChecked /></el-icon>
+            <span>AI分析</span>
+          </template>
+          <el-menu-item index="/reports">分析报告</el-menu-item>
+          <el-menu-item index="/prompt-templates">提示词管理</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <span>模型配置中心</span>
-        </el-menu-item>
-        <el-menu-item index="/prompt-templates">
-          <el-icon><Document /></el-icon>
-          <span>提示词管理</span>
         </el-menu-item>
         <el-menu-item index="/automation-tasks">
           <el-icon><Timer /></el-icon>
@@ -119,6 +120,8 @@ const currentUser = ref(getStoredUser())
 const modelConfig = ref(null)
 const now = ref(new Date())
 let clockTimer = null
+
+const defaultOpeneds = ['/reports', '/prompt-templates'].includes(route.path) ? ['ai-analysis'] : []
 
 const modelStatusText = computed(() => {
   if (!modelConfig.value) {
