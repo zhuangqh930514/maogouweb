@@ -15,10 +15,13 @@ export function fetchChatSession(sessionId) {
   return request(`/api/chat/sessions/${sessionId}`)
 }
 
-export function sendChatMessage(sessionId, content) {
+export function sendChatMessage(sessionId, content, options = {}) {
   return request(`/api/chat/sessions/${sessionId}/messages`, {
     method: 'POST',
-    body: { content },
+    body: {
+      content,
+      webSearchEnabled: Boolean(options.webSearchEnabled),
+    },
   })
 }
 

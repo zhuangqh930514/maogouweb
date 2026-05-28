@@ -4,7 +4,7 @@
       <div class="rail-header">
         <div>
           <h2>猫狗畅聊</h2>
-          <p>个人投研对话</p>
+          <p>自由对话助手</p>
         </div>
         <el-button type="primary" :icon="Plus" @click="startNewSession">新会话</el-button>
       </div>
@@ -63,7 +63,7 @@
                   <i></i>
                   <i></i>
                 </span>
-                <span>猫狗投研正在翻资料...</span>
+                <span class="loading-status">{{ message.loadingText || '阿猫正在整理思路...' }}</span>
               </div>
               <span v-else>{{ message.content }}</span>
             </div>
@@ -73,16 +73,31 @@
       </div>
 
       <footer class="composer">
-        <el-input
-          v-model="draft"
-          type="textarea"
-          :rows="3"
-          maxlength="8000"
-          show-word-limit
-          resize="none"
-          placeholder="问问猫狗畅聊，例如：记住我的风险偏好偏稳健，帮我分析明天自选股该看哪些信号。"
-          @keydown.enter.exact.prevent="sendMessage"
-        />
+        <div class="composer-input">
+          <div class="composer-tools">
+            <el-button
+              :type="webSearchEnabled ? 'primary' : ''"
+              :plain="!webSearchEnabled"
+              :icon="Search"
+              @click="toggleWebSearch"
+            >
+              {{ webSearchEnabled ? '联网已开' : '联网搜索' }}
+            </el-button>
+            <span class="composer-hint">
+              {{ webSearchEnabled ? '阿狗会先联网查资料，再交给模型回答。' : '当前只使用模型、记忆和会话上下文。' }}
+            </span>
+          </div>
+          <el-input
+            v-model="draft"
+            type="textarea"
+            :rows="3"
+            maxlength="8000"
+            show-word-limit
+            resize="none"
+            placeholder="想聊什么都可以：写作、编程、学习、生活、产品想法，或者继续聊股票投研。"
+            @keydown.enter.exact.prevent="sendMessage"
+          />
+        </div>
         <el-button type="primary" :icon="Promotion" :loading="sending" @click="sendMessage">发送</el-button>
       </footer>
     </section>
@@ -96,7 +111,7 @@
           maxlength="4000"
           show-word-limit
           resize="none"
-          placeholder="这里保存当前账号的长期偏好、关注方向和投研习惯。"
+          placeholder="这里保存当前账号的长期偏好、称呼、习惯、关注方向和重要背景。"
         />
         <div class="memory-footer">
           <span>最近互动：{{ formatFullTime(memory?.lastInteractionAt) || '暂无' }}</span>
@@ -108,9 +123,9 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Memo, Plus, Promotion, UserFilled } from '@element-plus/icons-vue'
+import { Delete, Memo, Plus, Promotion, Search, UserFilled } from '@element-plus/icons-vue'
 import {
   createChatSession,
   deleteChatSession,
@@ -132,12 +147,48 @@ const loadingMessages = ref(false)
 const sending = ref(false)
 const savingMemory = ref(false)
 const messageListRef = ref(null)
+const thinkingTimer = ref(null)
+const webSearchEnabled = ref(false)
 
 const quickPrompts = [
-  '帮我复盘今天自选股的主要风险',
-  '记住：我的风险偏好偏稳健，单只股票不想重仓',
-  '如果我接入 DeepSeek，模型配置要注意什么？',
-  '用技术面、资金面、风险点三段分析一只股票',
+  '帮我把今天的想法整理成一份待办清单',
+  '记住：以后回答我时先给结论，再解释原因',
+  '联网查一下今天 AI 行业有什么新消息',
+  '如果我想学习一个新技术，怎么制定一周计划？',
+]
+
+const thinkingStatuses = [
+  '阿猫正在整理思路...',
+  '阿猫正在翻聊天记忆...',
+  '阿猫正在把问题拆成小鱼干...',
+  '阿猫正在画重点...',
+  '阿猫正在把答案揉顺...',
+  '阿猫正在捋清线索...',
+  '阿猫正在挑一个更清楚的说法...',
+  '阿猫正在检查语气是否自然...',
+  '阿狗正在查资料...',
+  '阿狗正在打开电脑...',
+  '阿狗正在连接大模型...',
+  '阿狗正在核对上下文...',
+  '阿狗正在翻开投研笔记...',
+  '阿狗正在搬来键盘...',
+  '阿狗正在确认有没有跑题...',
+  '阿狗正在把资料排排坐...',
+]
+
+const webSearchThinkingStatuses = [
+  '阿狗正在联网查资料...',
+  '阿狗正在打开搜索页...',
+  '阿狗正在闻一闻最新线索...',
+  '阿狗正在核对网页摘要...',
+  '阿狗正在把来源排排坐...',
+  '阿狗正在筛掉可疑信息...',
+  '阿猫正在等阿狗递资料...',
+  '阿猫正在把搜索结果揉进回答...',
+  '阿猫正在确认别瞎编来源...',
+  '阿狗正在跑去看一眼网页...',
+  '阿猫和阿狗正在交换小纸条...',
+  '阿狗正在确认时间线...',
 ]
 
 const activeSession = computed(() => sessions.value.find((item) => item.id === activeSessionId.value))
@@ -150,6 +201,10 @@ onMounted(async () => {
   } else {
     await startNewSession()
   }
+})
+
+onBeforeUnmount(() => {
+  stopThinkingTicker()
 })
 
 async function loadSessions() {
@@ -215,6 +270,7 @@ async function sendMessage() {
   }
   draft.value = ''
   sending.value = true
+  const useWebSearch = webSearchEnabled.value
   const pendingKey = `pending-${Date.now()}`
   messages.value.push({
     id: `${pendingKey}-user`,
@@ -226,20 +282,23 @@ async function sendMessage() {
   messages.value.push({
     id: `${pendingKey}-assistant`,
     role: 'assistant',
-    content: '正在调用大模型...',
+    content: useWebSearch ? '正在联网搜索并调用大模型...' : '正在调用大模型...',
     status: 'PENDING',
     loading: true,
+    loadingText: pickThinkingStatus('', useWebSearch),
     createdAt: new Date().toISOString(),
   })
+  startThinkingTicker(`${pendingKey}-assistant`, useWebSearch)
   await scrollToBottom()
   try {
-    const response = await sendChatMessage(activeSessionId.value, content)
+    const response = await sendChatMessage(activeSessionId.value, content, { webSearchEnabled: useWebSearch })
     const start = messages.value.findIndex((item) => item.id === `${pendingKey}-user`)
     if (start >= 0) {
       messages.value.splice(start, 2, response.userMessage, response.assistantMessage)
     }
     memory.value = response.memory
     upsertSession(response.session)
+    showWebSearchResult(response)
     await scrollToBottom()
   } catch (error) {
     const pending = messages.value.find((item) => item.id === `${pendingKey}-assistant`)
@@ -249,6 +308,7 @@ async function sendMessage() {
       pending.content = error.message || '发送失败'
     }
   } finally {
+    stopThinkingTicker()
     sending.value = false
   }
 }
@@ -277,6 +337,51 @@ async function removeCurrentSession() {
 
 function fillPrompt(prompt) {
   draft.value = prompt
+}
+
+function toggleWebSearch() {
+  webSearchEnabled.value = !webSearchEnabled.value
+}
+
+function pickThinkingStatus(currentText = '', useWebSearch = false) {
+  const statuses = useWebSearch ? webSearchThinkingStatuses : thinkingStatuses
+  const candidates = statuses.filter((item) => item !== currentText)
+  const pool = candidates.length ? candidates : statuses
+  return pool[Math.floor(Math.random() * pool.length)]
+}
+
+function startThinkingTicker(messageId, useWebSearch = false) {
+  stopThinkingTicker()
+  thinkingTimer.value = window.setInterval(() => {
+    const pending = messages.value.find((item) => item.id === messageId && item.loading)
+    if (!pending) {
+      stopThinkingTicker()
+      return
+    }
+    pending.loadingText = pickThinkingStatus(pending.loadingText, useWebSearch)
+  }, 2200)
+}
+
+function stopThinkingTicker() {
+  if (!thinkingTimer.value) {
+    return
+  }
+  window.clearInterval(thinkingTimer.value)
+  thinkingTimer.value = null
+}
+
+function showWebSearchResult(response) {
+  if (!response?.webSearchEnabled) {
+    return
+  }
+  const count = response.webSearchResults?.length || 0
+  if (count > 0) {
+    ElMessage.success(`已联网参考 ${count} 条资料`)
+    return
+  }
+  if (response.webSearchError) {
+    ElMessage.warning(`联网搜索未成功：${response.webSearchError}`)
+  }
 }
 
 function openMemory() {
@@ -587,7 +692,7 @@ function pad(value) {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .model-loading img {
@@ -618,6 +723,10 @@ function pad(value) {
 
 .loading-dots i:nth-child(3) {
   animation-delay: 0.3s;
+}
+
+.loading-status {
+  min-width: 0;
 }
 
 @keyframes loader-bounce {
@@ -657,7 +766,32 @@ function pad(value) {
   padding: 14px 16px;
 }
 
-.composer .el-button {
+.composer-input {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.composer-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+
+.composer-tools :deep(.el-button) {
+  height: 32px;
+  padding: 0 12px;
+}
+
+.composer-hint {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.composer > .el-button {
   height: 44px;
   padding: 0 22px;
 }
