@@ -201,7 +201,7 @@ import MetricCard from '../components/MetricCard.vue'
 import NewsTicker from '../components/NewsTicker.vue'
 import { fetchAiReports } from '../services/ai'
 import { fetchLatestNews, fetchMarketBreadth, fetchMarketIndexes, fetchMarketHotStocks } from '../services/market'
-import { addWatchStock, fetchWatchlist } from '../services/watchlist'
+import { addWatchStock, fetchWatchlistCodes } from '../services/watchlist'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
 const marketLoading = ref(false)
@@ -331,8 +331,8 @@ async function loadHomeExtras() {
 
 async function loadWatchlistCodes() {
   try {
-    const list = await fetchWatchlist()
-    watchlistCodes.value = new Set(list.map((item) => item.code))
+    const codes = await fetchWatchlistCodes()
+    watchlistCodes.value = new Set(codes)
   } catch (error) {
     ElMessage.error(error.message || '自选股状态获取失败')
   }

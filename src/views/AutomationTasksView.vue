@@ -27,10 +27,12 @@
           <div class="form-actions">
             <el-button type="primary" :icon="Timer" :loading="saving" @click="saveTaskConfig">保存任务配置</el-button>
             <el-button :icon="VideoPlay" :loading="runningAnalysis" @click="runAnalysisOnce">立即执行一次</el-button>
+            <el-button :icon="DataAnalysis" :loading="runningEvolution" @click="runEvolutionOnce">立即复盘学习</el-button>
           </div>
         </el-form>
         <div class="task-state">
-          {{ schedulerStatusText }}
+          <div>{{ schedulerStatusText }}</div>
+          <div class="task-state-sub">{{ evolutionStatusText }}</div>
         </div>
       </div>
     </section>
@@ -40,8 +42,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Timer, VideoPlay } from '@element-plus/icons-vue'
+import { DataAnalysis, Timer, VideoPlay } from '@element-plus/icons-vue'
 import { analyzeWatchlist } from '../services/ai'
+import { refreshAiEvolutionFactors, verifyAiEvolutionReviews } from '../services/aiEvolution'
 import { fetchModelConfig, fetchSchedulerStatus, saveModelConfig } from '../services/settings'
 
 const defaultPrompt =
@@ -64,6 +67,7 @@ const closeTime = ref(form.closeTime)
 const loading = ref(false)
 const saving = ref(false)
 const runningAnalysis = ref(false)
+const runningEvolution = ref(false)
 const schedulerStatus = ref(null)
 
 const schedulerStatusText = computed(() => {
@@ -72,6 +76,13 @@ const schedulerStatusText = computed(() => {
   }
   const enabledText = schedulerStatus.value.enabled ? '已启用' : '未启用'
   return `Spring Task ${enabledText}：下次收盘分析 ${schedulerStatus.value.nextCloseAnalysisTime}`
+})
+
+const evolutionStatusText = computed(() => {
+  if (!schedulerStatus.value) {
+    return ''
+  }
+  return `自动复盘学习：Cron ${schedulerStatus.value.evolutionReviewCron || '未配置'}，默认 ${schedulerStatus.value.nextEvolutionReviewTime || '交易日 16:10'}`
 })
 
 async function loadTaskConfig() {
@@ -127,6 +138,20 @@ async function runAnalysisOnce() {
   }
 }
 
+async function runEvolutionOnce() {
+  runningEvolution.value = true
+  try {
+    await verifyAiEvolutionReviews()
+    await refreshAiEvolutionFactors()
+    ElMessage.success('已完成 AI 复盘学习')
+  } catch (error) {
+    console.error('[猫狗智投] AI 复盘学习失败', error)
+    ElMessage.error(error.message || 'AI 复盘学习失败')
+  } finally {
+    runningEvolution.value = false
+  }
+}
+
 onMounted(loadTaskConfig)
 </script>
 
@@ -157,5 +182,12 @@ onMounted(loadTaskConfig)
   color: #1d4ed8;
   font-size: 18px;
   font-weight: 800;
+}
+
+.task-state-sub {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
 }
 </style>

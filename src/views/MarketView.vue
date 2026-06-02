@@ -130,7 +130,7 @@ import { ElMessage } from 'element-plus'
 import EChart from '../components/EChart.vue'
 import { klineOption, lineOption } from '../services/chartOptions'
 import { fetchIndexIntraday, fetchIndexKline, fetchMarketIndexes, fetchSectorHeatmap, fetchSectorHotStocks } from '../services/market'
-import { addWatchStock, fetchWatchlist } from '../services/watchlist'
+import { addWatchStock, fetchWatchlistCodes } from '../services/watchlist'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
 const loading = ref(false)
@@ -238,8 +238,8 @@ async function selectIndex(item) {
 
 async function loadWatchlistCodes() {
   try {
-    const list = await fetchWatchlist()
-    watchlistCodes.value = new Set(list.map((item) => item.code))
+    const codes = await fetchWatchlistCodes()
+    watchlistCodes.value = new Set(codes)
   } catch (error) {
     ElMessage.error(error.message || '自选股状态获取失败')
   }

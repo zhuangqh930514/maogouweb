@@ -40,6 +40,10 @@
             <span>AI分析</span>
           </template>
           <el-menu-item index="/reports">分析报告</el-menu-item>
+          <el-menu-item index="/ai-evolution">AI 进化总览</el-menu-item>
+          <el-menu-item index="/ai-reviews">复盘验证</el-menu-item>
+          <el-menu-item index="/ai-factors">因子学习</el-menu-item>
+          <el-menu-item index="/ai-strategies">策略进化</el-menu-item>
           <el-menu-item index="/prompt-templates">提示词管理</el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/settings">
@@ -121,7 +125,8 @@ const modelConfig = ref(null)
 const now = ref(new Date())
 let clockTimer = null
 
-const defaultOpeneds = ['/reports', '/prompt-templates'].includes(route.path) ? ['ai-analysis'] : []
+const aiMenuPaths = ['/reports', '/ai-evolution', '/ai-reviews', '/ai-factors', '/ai-strategies', '/prompt-templates']
+const defaultOpeneds = aiMenuPaths.includes(route.path) ? ['ai-analysis'] : []
 
 const modelStatusText = computed(() => {
   if (!modelConfig.value) {

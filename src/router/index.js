@@ -4,6 +4,10 @@ import MarketView from '../views/MarketView.vue'
 import WatchlistView from '../views/WatchlistView.vue'
 import PortfolioView from '../views/PortfolioView.vue'
 import ReportsView from '../views/ReportsView.vue'
+import AiEvolutionDashboardView from '../views/AiEvolutionDashboardView.vue'
+import AiReviewCenterView from '../views/AiReviewCenterView.vue'
+import AiFactorCenterView from '../views/AiFactorCenterView.vue'
+import AiStrategyEvolutionView from '../views/AiStrategyEvolutionView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import AutomationTasksView from '../views/AutomationTasksView.vue'
 import PromptTemplatesView from '../views/PromptTemplatesView.vue'
@@ -20,6 +24,10 @@ const routes = [
   { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股' } },
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
   { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告' } },
+  { path: '/ai-evolution', name: 'aiEvolution', component: AiEvolutionDashboardView, meta: { title: 'AI 进化总览' } },
+  { path: '/ai-reviews', name: 'aiReviews', component: AiReviewCenterView, meta: { title: '复盘验证' } },
+  { path: '/ai-factors', name: 'aiFactors', component: AiFactorCenterView, meta: { title: '因子学习' } },
+  { path: '/ai-strategies', name: 'aiStrategies', component: AiStrategyEvolutionView, meta: { title: '策略进化' } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { title: '模型配置中心' } },
   { path: '/prompt-templates', name: 'promptTemplates', component: PromptTemplatesView, meta: { title: '提示词管理' } },
   { path: '/automation-tasks', name: 'automationTasks', component: AutomationTasksView, meta: { title: '自动化任务' } },

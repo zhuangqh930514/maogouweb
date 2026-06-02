@@ -5,6 +5,11 @@ export function fetchWatchlist(groupName) {
   return request(`/api/watchlist${query}`)
 }
 
+export function fetchWatchlistCodes(groupName) {
+  const query = groupName && groupName !== '全部' ? `?groupName=${encodeURIComponent(groupName)}` : ''
+  return request(`/api/watchlist/codes${query}`)
+}
+
 export function addWatchStock(code, groupName = '全部') {
   return request('/api/watchlist', {
     method: 'POST',

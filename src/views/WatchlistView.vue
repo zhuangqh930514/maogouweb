@@ -2,7 +2,7 @@
   <div class="page">
     <section class="surface toolbar-surface">
       <div class="surface-body watch-toolbar">
-        <el-segmented v-model="group" :options="['全部', 'AI重点', '高波动', '价值股']" />
+        <el-segmented v-model="group" :options="['全部', 'AI重点', '高波动', '稳健持有']" />
         <div class="toolbar-spacer"></div>
         <el-autocomplete
           v-model="newCode"
@@ -163,7 +163,7 @@ let draggedCode = null
 const filteredStocks = computed(() => {
   if (group.value === 'AI重点') return watchStocks.value.filter((item) => item.aiScore >= 78)
   if (group.value === '高波动') return watchStocks.value.filter((item) => item.volumeRatio >= 1.8)
-  if (group.value === '价值股') return watchStocks.value.filter((item) => item.pe > 0 && item.pe < 25)
+  if (group.value === '稳健持有') return watchStocks.value.filter((item) => item.advice === '稳健持有')
   return watchStocks.value
 })
 
@@ -204,12 +204,12 @@ const financeItems = computed(() => [
   { label: '每股经营现金流', value: formatNumberOrEmpty(finance.value.operatingCashFlowPerShare) },
 ])
 
-async function loadWatchlist() {
+async function loadWatchlist({ loadInitialDetail = true } = {}) {
   loading.value = true
   try {
     const list = await fetchWatchlist()
     watchStocks.value = list.map(normalizeStock)
-    if (!selected.value && watchStocks.value.length) {
+    if (loadInitialDetail && !selected.value && watchStocks.value.length) {
       await selectStock(watchStocks.value[0])
     } else if (selected.value) {
       selected.value = watchStocks.value.find((item) => item.code === selected.value.code) || watchStocks.value[0] || null
@@ -224,10 +224,7 @@ async function loadWatchlist() {
 }
 
 async function refreshWatchlistRealtime() {
-  await loadWatchlist()
-  if (selected.value) {
-    await selectStock(selected.value)
-  }
+  await loadWatchlist({ loadInitialDetail: false })
 }
 
 async function selectStock(row) {
@@ -418,10 +415,10 @@ watch(group, () => {
 onMounted(() => {
   loadWatchlist()
   refreshTimer = window.setInterval(() => {
-    if (isAshareMarketOpen()) {
+    if (!document.hidden && isAshareMarketOpen()) {
       refreshWatchlistRealtime()
     }
-  }, 10000)
+  }, 30000)
 })
 
 onUnmounted(() => {
