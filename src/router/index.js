@@ -4,10 +4,17 @@ import MarketView from '../views/MarketView.vue'
 import WatchlistView from '../views/WatchlistView.vue'
 import PortfolioView from '../views/PortfolioView.vue'
 import ReportsView from '../views/ReportsView.vue'
+import AiLearningDashboardView from '../views/AiLearningDashboardView.vue'
+import AiSamplesView from '../views/AiSamplesView.vue'
 import AiEvolutionDashboardView from '../views/AiEvolutionDashboardView.vue'
 import AiReviewCenterView from '../views/AiReviewCenterView.vue'
 import AiFactorCenterView from '../views/AiFactorCenterView.vue'
+import AiFactorFactoryView from '../views/AiFactorFactoryView.vue'
+import AiStockPickerLabView from '../views/AiStockPickerLabView.vue'
 import AiStrategyEvolutionView from '../views/AiStrategyEvolutionView.vue'
+import AiStrategyLabView from '../views/AiStrategyLabView.vue'
+import AiBacktestView from '../views/AiBacktestView.vue'
+import AiModelEvalsView from '../views/AiModelEvalsView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import AutomationTasksView from '../views/AutomationTasksView.vue'
 import PromptTemplatesView from '../views/PromptTemplatesView.vue'
@@ -24,10 +31,17 @@ const routes = [
   { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股' } },
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
   { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告' } },
+  { path: '/ai-learning', name: 'aiLearning', component: AiLearningDashboardView, meta: { title: 'AI 学习总览' } },
+  { path: '/ai-samples', name: 'aiSamples', component: AiSamplesView, meta: { title: '数据样本中心' } },
   { path: '/ai-evolution', name: 'aiEvolution', component: AiEvolutionDashboardView, meta: { title: 'AI 进化总览' } },
   { path: '/ai-reviews', name: 'aiReviews', component: AiReviewCenterView, meta: { title: '复盘验证' } },
   { path: '/ai-factors', name: 'aiFactors', component: AiFactorCenterView, meta: { title: '因子学习' } },
+  { path: '/ai-factor-factory', name: 'aiFactorFactory', component: AiFactorFactoryView, meta: { title: '因子工厂' } },
+  { path: '/ai-stock-picker-lab', name: 'aiStockPickerLab', component: AiStockPickerLabView, meta: { title: '选股实验室' } },
   { path: '/ai-strategies', name: 'aiStrategies', component: AiStrategyEvolutionView, meta: { title: '策略进化' } },
+  { path: '/ai-strategy-lab', name: 'aiStrategyLab', component: AiStrategyLabView, meta: { title: '策略实验室' } },
+  { path: '/ai-backtests', name: 'aiBacktests', component: AiBacktestView, meta: { title: '回测中心' } },
+  { path: '/ai-model-evals', name: 'aiModelEvals', component: AiModelEvalsView, meta: { title: '模型评测中心' } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { title: '模型配置中心' } },
   { path: '/prompt-templates', name: 'promptTemplates', component: PromptTemplatesView, meta: { title: '提示词管理' } },
   { path: '/automation-tasks', name: 'automationTasks', component: AutomationTasksView, meta: { title: '自动化任务' } },
