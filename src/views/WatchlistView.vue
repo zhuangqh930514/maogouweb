@@ -227,7 +227,7 @@ async function loadWatchlist({ loadInitialDetail = true } = {}) {
     const list = await fetchWatchlist()
     watchStocks.value = list.map(normalizeStock)
     if (loadInitialDetail && !selected.value && watchStocks.value.length) {
-      await selectStock(watchStocks.value[0])
+      void selectStock(watchStocks.value[0])
     } else if (selected.value) {
       selected.value = watchStocks.value.find((item) => item.code === selected.value.code) || watchStocks.value[0] || null
     }
