@@ -235,7 +235,7 @@ function beginAnalysisProgress(title) {
     percent: 8,
     status: undefined,
     title,
-    message: '正在拉取实时行情、K线和财务摘要...',
+    message: '正在校验实时行情、最新K线和资讯新鲜度...',
   })
   analysisProgressTimer = window.setInterval(() => {
     if (!analysisProgress.visible || analysisProgress.percent >= 92) {
@@ -245,7 +245,7 @@ function beginAnalysisProgress(title) {
     if (analysisProgress.percent >= 68) {
       analysisProgress.message = '模型已返回内容，正在解析结构化报告...'
     } else if (analysisProgress.percent >= 36) {
-      analysisProgress.message = '正在调用大模型生成技术面、风险和买卖点...'
+      analysisProgress.message = '实时数据校验通过，正在调用大模型生成技术面、风险和买卖点...'
     }
   }, 900)
 }

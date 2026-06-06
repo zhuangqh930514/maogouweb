@@ -30,7 +30,7 @@
           <el-table
             ref="portfolioTableRef"
             v-loading="loading"
-            :data="positionRows"
+            :data="pagedPositionRows"
             class="compact-table"
             row-key="code"
             @selection-change="selectedRows = $event"
@@ -65,6 +65,17 @@
               </template>
             </el-table-column>
           </el-table>
+          <div v-if="positionRows.length" class="table-footer">
+            <span>当前持仓 {{ positionRows.length }} 只</span>
+            <el-pagination
+              v-model:current-page="positionPage"
+              v-model:page-size="positionPageSize"
+              :page-sizes="[20, 50, 100]"
+              :total="positionRows.length"
+              background
+              layout="sizes, prev, pager, next, total"
+            />
+          </div>
         </div>
       </section>
 
@@ -128,7 +139,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import EChart from '../components/EChart.vue'
@@ -149,6 +160,12 @@ const positionOrder = ref(loadPositionOrder())
 const portfolioTableRef = ref(null)
 const summary = ref({ totalCost: 0, totalMarketValue: 0, totalProfit: 0, profitRate: 0, positions: [] })
 const positionRows = computed(() => sortPositions((summary.value.positions || []).map(normalizePosition)))
+const positionPage = ref(1)
+const positionPageSize = ref(50)
+const pagedPositionRows = computed(() => {
+  const start = (positionPage.value - 1) * positionPageSize.value
+  return positionRows.value.slice(start, start + positionPageSize.value)
+})
 let refreshTimer = null
 let draggedCode = null
 
@@ -172,6 +189,7 @@ async function loadPortfolio() {
   try {
     summary.value = await fetchPortfolioPositions()
     selectedRows.value = []
+    clampPositionPage()
     await nextTick()
     bindRowDragEvents()
   } catch (error) {
@@ -229,7 +247,7 @@ function bindRowDragEvents() {
     return
   }
   rows.forEach((row, index) => {
-    const position = positionRows.value[index]
+    const position = pagedPositionRows.value[index]
     if (!position) {
       return
     }
@@ -376,6 +394,23 @@ function formatDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
+watch([positionRows, positionPageSize], () => {
+  clampPositionPage()
+  nextTick(bindRowDragEvents)
+})
+
+watch(positionPage, () => {
+  selectedRows.value = []
+  nextTick(bindRowDragEvents)
+})
+
+function clampPositionPage() {
+  const totalPages = Math.max(1, Math.ceil(positionRows.value.length / positionPageSize.value))
+  if (positionPage.value > totalPages) {
+    positionPage.value = totalPages
+  }
+}
+
 onMounted(() => {
   loadPortfolio()
   refreshTimer = window.setInterval(() => {
@@ -419,6 +454,22 @@ onUnmounted(() => {
 .drag-handle:hover {
   color: #2563eb;
   background: #eff6ff;
+}
+
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 14px;
+}
+
+.table-footer span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 :deep(.el-table__body tr.is-dragging) {

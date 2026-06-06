@@ -43,7 +43,7 @@
           <el-table
             ref="watchTableRef"
             v-loading="loading"
-            :data="filteredStocks"
+            :data="pagedStocks"
             class="compact-table"
             row-key="code"
             highlight-current-row
@@ -84,6 +84,17 @@
               <el-empty description="暂无自选股，请先添加股票代码" />
             </template>
           </el-table>
+          <div v-if="filteredStocks.length" class="table-footer">
+            <span>当前筛选 {{ filteredStocks.length }} 只，自选总数 {{ watchStocks.length }} 只</span>
+            <el-pagination
+              v-model:current-page="watchPage"
+              v-model:page-size="watchPageSize"
+              :page-sizes="[20, 50, 100]"
+              :total="filteredStocks.length"
+              background
+              layout="sizes, prev, pager, next, total"
+            />
+          </div>
         </div>
       </section>
 
@@ -157,6 +168,8 @@ const selectedRows = ref([])
 const selected = ref(null)
 const detail = ref(null)
 const watchTableRef = ref(null)
+const watchPage = ref(1)
+const watchPageSize = ref(50)
 let refreshTimer = null
 let draggedCode = null
 
@@ -165,6 +178,10 @@ const filteredStocks = computed(() => {
   if (group.value === '高波动') return watchStocks.value.filter((item) => item.volumeRatio >= 1.8)
   if (group.value === '稳健持有') return watchStocks.value.filter((item) => item.advice === '稳健持有')
   return watchStocks.value
+})
+const pagedStocks = computed(() => {
+  const start = (watchPage.value - 1) * watchPageSize.value
+  return filteredStocks.value.slice(start, start + watchPageSize.value)
 })
 
 const intradayValues = computed(() => (detail.value?.intraday || []).map((point) => Number(point.value)))
@@ -214,6 +231,7 @@ async function loadWatchlist({ loadInitialDetail = true } = {}) {
     } else if (selected.value) {
       selected.value = watchStocks.value.find((item) => item.code === selected.value.code) || watchStocks.value[0] || null
     }
+    clampWatchPage()
     await nextTick()
     bindRowDragEvents()
   } catch (error) {
@@ -343,7 +361,7 @@ function bindRowDragEvents() {
     return
   }
   rows.forEach((row, index) => {
-    const stock = filteredStocks.value[index]
+    const stock = pagedStocks.value[index]
     if (!stock) {
       return
     }
@@ -406,11 +424,29 @@ function formatYi(value) {
 }
 
 watch(group, () => {
+  watchPage.value = 1
   if (filteredStocks.value.length && !filteredStocks.value.some((item) => item.code === selected.value?.code)) {
     selectStock(filteredStocks.value[0])
   }
   nextTick(bindRowDragEvents)
 })
+
+watch([filteredStocks, watchPageSize], () => {
+  clampWatchPage()
+  nextTick(bindRowDragEvents)
+})
+
+watch(watchPage, () => {
+  selectedRows.value = []
+  nextTick(bindRowDragEvents)
+})
+
+function clampWatchPage() {
+  const totalPages = Math.max(1, Math.ceil(filteredStocks.value.length / watchPageSize.value))
+  if (watchPage.value > totalPages) {
+    watchPage.value = totalPages
+  }
+}
 
 onMounted(() => {
   loadWatchlist()
@@ -477,6 +513,22 @@ onUnmounted(() => {
 .drag-handle:hover {
   color: #2563eb;
   background: #eff6ff;
+}
+
+.table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 14px;
+}
+
+.table-footer span {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 :deep(.el-table__body tr.is-dragging) {
