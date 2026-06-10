@@ -22,6 +22,13 @@ export function fetchSchedulerStatus() {
   return request('/api/settings/scheduler/status')
 }
 
+export function toggleAutoClosePipeline(enabled) {
+  return request('/api/settings/scheduler/auto-close-pipeline', {
+    method: 'PUT',
+    body: { enabled },
+  })
+}
+
 export function fetchPromptTemplates() {
   return request('/api/prompt-templates')
 }

@@ -8,6 +8,14 @@
         </div>
         <div class="header-actions">
           <el-button :icon="Refresh" :loading="loading" @click="loadTaskConfig">刷新状态</el-button>
+          <el-button
+            :type="schedulerStatus?.autoClosePipelineEnabled ? 'danger' : 'success'"
+            :icon="Timer"
+            :loading="togglingAutoPipeline"
+            @click="toggleAutoPipeline"
+          >
+            {{ schedulerStatus?.autoClosePipelineEnabled ? '关闭每日自动' : '开启每日自动' }}
+          </el-button>
           <el-button :icon="VideoPlay" :loading="pipelineRunning === 'intraday'" @click="runPipeline('intraday')">
             盘中快速巡检
           </el-button>
@@ -20,14 +28,14 @@
       <div v-loading="loading" class="surface-body command-body">
         <div class="status-grid">
           <div class="status-tile">
-            <span>调度状态</span>
-            <strong :class="schedulerStatus?.enabled ? 'ok' : 'warn'">{{ schedulerEnabledText }}</strong>
-            <em>{{ schedulerStatusText }}</em>
+            <span>每日自动流水线</span>
+            <strong :class="autoClosePipelineClass">{{ autoClosePipelineText }}</strong>
+            <em>{{ autoClosePipelineHelper }}</em>
           </div>
           <div class="status-tile">
-            <span>下次收盘任务</span>
-            <strong>{{ schedulerStatus?.nextCloseAnalysisTime || '-' }}</strong>
-            <em>用于批量分析自选股和生成报告</em>
+            <span>下次自动执行</span>
+            <strong>{{ schedulerStatus?.nextAutoClosePipelineTime || '-' }}</strong>
+            <em>每个开盘日 16:00 后端自动执行收盘学习顺序</em>
           </div>
           <div class="status-tile">
             <span>学习样本</span>
@@ -142,7 +150,7 @@
       <div class="surface-header">
         <div>
           <h2 class="surface-title">调度配置</h2>
-          <p class="surface-subtitle">这里保存的是后端 Spring Task 使用的模型和调度参数，实际启停仍以服务端环境配置为准</p>
+          <p class="surface-subtitle">每日自动收盘流水线由本页按钮启停；模型、范围和 Top K 参数会被手动与自动任务复用</p>
         </div>
       </div>
       <div class="surface-body">
@@ -246,7 +254,7 @@ import {
   runLearningModelEval,
   verifyLearningLabels,
 } from '../services/aiLearning'
-import { fetchModelConfig, fetchSchedulerStatus, saveModelConfig } from '../services/settings'
+import { fetchModelConfig, fetchSchedulerStatus, saveModelConfig, toggleAutoClosePipeline } from '../services/settings'
 
 const defaultPrompt =
   '你是一名A股投研助手。请基于以下行情、K线、财务和持仓数据，输出 JSON 结构：technicalAnalysis、riskWarning、buySellPoints、score。'
@@ -284,6 +292,7 @@ const modelEvalForm = reactive({
 const closeTime = ref(form.closeTime)
 const loading = ref(false)
 const saving = ref(false)
+const togglingAutoPipeline = ref(false)
 const runningTaskKey = ref('')
 const pipelineRunning = ref('')
 const schedulerStatus = ref(null)
@@ -446,19 +455,43 @@ const currentPipelineSteps = computed(() => {
   })
 })
 
-const schedulerEnabledText = computed(() => {
+const autoClosePipelineText = computed(() => {
   if (!schedulerStatus.value) {
     return '读取中'
   }
-  return schedulerStatus.value.enabled ? '已启用' : '未启用'
+  if (schedulerStatus.value.autoClosePipelineRunning) {
+    return '运行中'
+  }
+  return schedulerStatus.value.autoClosePipelineEnabled ? '已开启' : '已关闭'
 })
 
-const schedulerStatusText = computed(() => {
+const autoClosePipelineClass = computed(() => {
+  if (!schedulerStatus.value) {
+    return 'warn'
+  }
+  if (schedulerStatus.value.autoClosePipelineRunning) {
+    return 'warn'
+  }
+  return schedulerStatus.value.autoClosePipelineEnabled ? 'ok' : 'warn'
+})
+
+const autoClosePipelineHelper = computed(() => {
   if (!schedulerStatus.value) {
     return '正在读取任务状态'
   }
-  const cron = schedulerStatus.value.evolutionReviewCron || '未配置'
-  return `盘中 ${form.intradayInterval} 分钟一次，复盘 Cron ${cron}`
+  const status = schedulerStatus.value.autoClosePipelineLastStatus || 'IDLE'
+  const finishedAt = schedulerStatus.value.autoClosePipelineLastFinishedAt
+  const message = schedulerStatus.value.autoClosePipelineLastMessage
+  if (status === 'SUCCESS') {
+    return finishedAt ? `上次成功：${finishedAt}` : '上次执行成功'
+  }
+  if (status === 'FAILED') {
+    return message ? `上次失败：${message}` : '上次执行失败'
+  }
+  if (status === 'RUNNING') {
+    return '后端正在按顺序执行 AI 学习任务'
+  }
+  return schedulerStatus.value.autoClosePipelineEnabled ? '等待下一个交易日 16:00' : '开启后每个开盘日 16:00 自动执行'
 })
 
 function resolveTaskStatus(key) {
@@ -558,6 +591,28 @@ async function saveTaskConfig() {
     ElMessage.error(error.message || '保存任务配置失败')
   } finally {
     saving.value = false
+  }
+}
+
+async function toggleAutoPipeline() {
+  if (!schedulerStatus.value) {
+    return
+  }
+  const nextEnabled = !schedulerStatus.value.autoClosePipelineEnabled
+  togglingAutoPipeline.value = true
+  try {
+    schedulerStatus.value = await toggleAutoClosePipeline(nextEnabled)
+    addLog(
+      '每日自动收盘流水线',
+      'success',
+      nextEnabled ? '已开启：每个开盘日 16:00 自动执行收盘学习顺序' : '已关闭：后端不会再自动触发收盘学习流水线',
+    )
+    ElMessage.success(nextEnabled ? '每日自动收盘流水线已开启' : '每日自动收盘流水线已关闭')
+  } catch (error) {
+    addLog('每日自动收盘流水线', 'error', error.message || '启停失败')
+    ElMessage.error(error.message || '自动流水线启停失败')
+  } finally {
+    togglingAutoPipeline.value = false
   }
 }
 
