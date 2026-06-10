@@ -5,7 +5,11 @@
         <div class="surface-header">
           <div>
             <h2 class="surface-title">本地大模型接入配置</h2>
-            <p class="surface-subtitle">兼容 Ollama / vLLM 暴露的 OpenAI RESTful API</p>
+            <p class="surface-subtitle">模型接入、提示词模板和自动化任务是 AI 分析闭环的配置入口</p>
+          </div>
+          <div class="header-actions">
+            <el-button @click="router.push('/prompt-templates')">提示词管理</el-button>
+            <el-button @click="router.push('/automation-tasks')">自动化任务</el-button>
           </div>
         </div>
         <div v-loading="loading" class="surface-body">
@@ -63,10 +67,12 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Check, Connection } from '@element-plus/icons-vue'
 import { fetchModelConfig, saveModelConfig, testModelConnection } from '../services/settings'
 
+const router = useRouter()
 const form = reactive({
   apiBaseUrl: '',
   modelName: '',

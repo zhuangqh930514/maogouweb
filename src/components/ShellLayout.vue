@@ -40,18 +40,9 @@
             <span>AI分析</span>
           </template>
           <el-menu-item index="/reports">分析报告</el-menu-item>
-          <el-menu-item index="/ai-learning">AI 学习总览</el-menu-item>
-          <el-menu-item index="/ai-samples">数据样本中心</el-menu-item>
-          <el-menu-item index="/ai-factor-factory">因子工厂</el-menu-item>
-          <el-menu-item index="/ai-stock-picker-lab">选股实验室</el-menu-item>
-          <el-menu-item index="/ai-strategy-lab">策略实验室</el-menu-item>
-          <el-menu-item index="/ai-backtests">回测中心</el-menu-item>
-          <el-menu-item index="/ai-model-evals">模型评测中心</el-menu-item>
-          <el-menu-item index="/ai-evolution">AI 进化总览</el-menu-item>
-          <el-menu-item index="/ai-reviews">复盘验证</el-menu-item>
-          <el-menu-item index="/ai-factors">因子学习</el-menu-item>
-          <el-menu-item index="/ai-strategies">策略进化</el-menu-item>
-          <el-menu-item index="/prompt-templates">提示词管理</el-menu-item>
+          <el-menu-item index="/ai-learning-evolution">学习进化</el-menu-item>
+          <el-menu-item index="/ai-factor-hub">因子中心</el-menu-item>
+          <el-menu-item index="/ai-strategy-validation">策略验证</el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
@@ -63,7 +54,7 @@
         </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatLineRound /></el-icon>
-          <span>猫狗畅聊</span>
+          <span>猫狗投研助手</span>
         </el-menu-item>
       </el-menu>
 
@@ -134,6 +125,9 @@ let clockTimer = null
 
 const aiMenuPaths = [
   '/reports',
+  '/ai-learning-evolution',
+  '/ai-factor-hub',
+  '/ai-strategy-validation',
   '/ai-learning',
   '/ai-samples',
   '/ai-factor-factory',
@@ -145,7 +139,6 @@ const aiMenuPaths = [
   '/ai-reviews',
   '/ai-factors',
   '/ai-strategies',
-  '/prompt-templates',
 ]
 const defaultOpeneds = aiMenuPaths.includes(route.path) ? ['ai-analysis'] : []
 

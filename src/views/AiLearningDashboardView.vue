@@ -65,7 +65,7 @@
             <h2 class="surface-title">高权重因子</h2>
             <p class="surface-subtitle">优先看置信下界和样本量，避免样本内自嗨</p>
           </div>
-          <el-button text type="primary" @click="router.push('/ai-factor-factory')">进入因子工厂</el-button>
+          <el-button text type="primary" @click="router.push('/ai-factor-hub')">进入因子中心</el-button>
         </div>
         <div class="surface-body">
           <el-table :data="dashboard?.topFactors || []" class="compact-table" height="360">

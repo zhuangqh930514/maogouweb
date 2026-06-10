@@ -3,8 +3,8 @@
     <aside class="chat-rail">
       <div class="rail-header">
         <div>
-          <h2>猫狗畅聊</h2>
-          <p>自由对话助手</p>
+          <h2>猫狗投研助手</h2>
+          <p>股票研究优先的自由对话助手</p>
         </div>
         <el-button type="primary" :icon="Plus" @click="startNewSession">新会话</el-button>
       </div>

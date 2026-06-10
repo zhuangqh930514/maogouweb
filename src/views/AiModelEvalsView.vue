@@ -4,7 +4,7 @@
       <div class="surface-header">
         <div>
           <h2 class="surface-title">模型评测中心</h2>
-          <p class="surface-subtitle">比较模型输出质量、JSON 成功率和报告稳定性，避免只凭主观感觉换模型</p>
+          <p class="surface-subtitle">比较 JSON 合规、方向命中、目标命中、收益和回撤，避免只凭主观感觉换模型</p>
         </div>
         <div class="header-actions">
           <el-select v-model="form.evalType" style="width: 170px">
@@ -22,7 +22,7 @@
       <div class="surface-header">
         <div>
           <h2 class="surface-title">评测记录</h2>
-          <p class="surface-subtitle">当前版本先基于历史报告统计，后续可扩展为实时多模型 A/B</p>
+          <p class="surface-subtitle">基于历史 AI 报告和 T+N 复盘标签统计，样本不足时会标记 LOW_SAMPLE</p>
         </div>
       </div>
       <div class="surface-body">
