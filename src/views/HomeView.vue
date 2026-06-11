@@ -101,9 +101,19 @@
             <h2 class="surface-title">市场前十热度股票</h2>
             <p class="surface-subtitle">按全市场主力净流入热度排序展示</p>
           </div>
-          <el-tag class="tag-red" effect="plain">TOP 10</el-tag>
+          <el-tag :type="sourceTagType(marketHotStocksSource.sourceStatus)" effect="plain">
+            {{ sourceStatusText(marketHotStocksSource.sourceStatus) }}
+          </el-tag>
         </div>
         <div class="surface-body">
+          <el-alert
+            v-if="marketHotStocksSource.sourceStatus !== 'REALTIME'"
+            class="source-alert"
+            :type="sourceAlertType(marketHotStocksSource.sourceStatus)"
+            :title="sourceMessage(marketHotStocksSource, '市场热度股票数据源异常，暂不展示演示数据')"
+            show-icon
+            :closable="false"
+          />
           <el-table :data="marketHotStocks" class="compact-table" row-key="code">
             <el-table-column prop="rank" label="排名" width="80" />
             <el-table-column prop="name" label="股票" min-width="120">
@@ -144,7 +154,7 @@
               </template>
             </el-table-column>
             <template #empty>
-              <el-empty description="暂无热度股票" />
+              <el-empty :description="marketHotStocksSource.sourceStatus === 'UNAVAILABLE' ? '市场热度股票实时源暂不可用' : '暂无热度股票'" />
             </template>
           </el-table>
         </div>
@@ -211,6 +221,7 @@ const marketIndexes = ref([])
 const marketBreadth = ref(emptyBreadth())
 const newsItems = ref([])
 const marketHotStocks = ref([])
+const marketHotStocksSource = ref(emptySourceState())
 const aiReports = ref([])
 const watchlistCodes = ref(new Set())
 const addingCodes = ref(new Set())
@@ -322,9 +333,12 @@ function barHeight(count) {
 async function loadHomeExtras() {
   try {
     const [stocks, reports] = await Promise.all([fetchMarketHotStocks(10), fetchAiReports()])
-    marketHotStocks.value = stocks.map(normalizeHotStock)
+    marketHotStocksSource.value = normalizeSourceState(stocks, '市场热度股票数据已更新')
+    marketHotStocks.value = (stocks.items || []).map(normalizeHotStock)
     aiReports.value = reports
   } catch (error) {
+    marketHotStocks.value = []
+    marketHotStocksSource.value = emptySourceState('UNAVAILABLE', error.message || '市场热度股票获取失败')
     ElMessage.error(error.message || '首页热度股票/AI 摘要获取失败')
   }
 }
@@ -387,6 +401,64 @@ function normalizeHotStock(item) {
     percent: Number(item.percent || 0),
     netInflow: Number(item.netInflow || 0),
   }
+}
+
+function emptySourceState(status = 'REALTIME', message = '') {
+  return {
+    sourceStatus: status,
+    source: '',
+    sourceUpdatedAt: '',
+    servedAt: '',
+    message,
+  }
+}
+
+function normalizeSourceState(data, fallbackMessage) {
+  return {
+    sourceStatus: String(data?.sourceStatus || 'REALTIME').toUpperCase(),
+    source: data?.source || 'EASTMONEY',
+    sourceUpdatedAt: data?.sourceUpdatedAt || data?.updatedAt || '',
+    servedAt: data?.servedAt || '',
+    message: data?.message || fallbackMessage,
+  }
+}
+
+function sourceStatusText(status) {
+  return {
+    REALTIME: '实时',
+    STALE: '非实时',
+    UNAVAILABLE: '数据源异常',
+  }[status] || status || '-'
+}
+
+function sourceTagType(status) {
+  return {
+    REALTIME: 'success',
+    STALE: 'warning',
+    UNAVAILABLE: 'danger',
+  }[status] || 'info'
+}
+
+function sourceAlertType(status) {
+  return status === 'UNAVAILABLE' ? 'error' : 'warning'
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return '-'
+  }
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return String(value).replace('T', ' ').slice(0, 19)
+  }
+  const pad = (number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function sourceMessage(sourceState, fallback) {
+  const updatedAt = formatDateTime(sourceState.sourceUpdatedAt)
+  const suffix = updatedAt === '-' ? '' : `，上次更新时间：${updatedAt}`
+  return `${sourceState.message || fallback}${suffix}`
 }
 
 function formatPercent(value) {
@@ -476,6 +548,10 @@ onUnmounted(() => {
 .news-list::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: #cbd5e1;
+}
+
+.source-alert {
+  margin-bottom: 14px;
 }
 
 .breadth-panel {

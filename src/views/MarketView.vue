@@ -45,10 +45,20 @@
           <h2 class="surface-title">板块热力图</h2>
           <p class="surface-subtitle">涨幅最大的 10 个板块与跌幅最大的 10 个板块</p>
         </div>
-        <el-tag class="tag-blue" effect="plain">实时板块</el-tag>
+        <el-tag :type="sourceTagType(sectorSource.sourceStatus)" effect="plain">
+          {{ sourceStatusText(sectorSource.sourceStatus) }}
+        </el-tag>
       </div>
       <div v-loading="sectorLoading" class="surface-body">
-        <div class="sector-heatmap">
+        <el-alert
+          v-if="sectorSource.sourceStatus !== 'REALTIME'"
+          class="source-alert"
+          :type="sourceAlertType(sectorSource.sourceStatus)"
+          :title="sourceMessage(sectorSource, '板块热力图数据源异常，暂不展示演示数据')"
+          show-icon
+          :closable="false"
+        />
+        <div v-if="sectorHeatmapItems.length" class="sector-heatmap">
           <article
             v-for="item in sectorHeatmapItems"
             :key="`${item.direction}-${item.code}`"
@@ -64,6 +74,7 @@
             <span>{{ formatNetInflow(item.netInflow) }}</span>
           </article>
         </div>
+        <el-empty v-else-if="!sectorLoading" description="板块热力图实时源暂不可用" />
       </div>
     </section>
 
@@ -73,8 +84,19 @@
           <h2 class="surface-title">{{ selectedSector?.name || '板块' }} 热门股票</h2>
           <p class="surface-subtitle">按主力净流入排序展示热度最高的 10 只股票</p>
         </div>
+        <el-tag :type="sourceTagType(hotStocksSource.sourceStatus)" effect="plain">
+          {{ sourceStatusText(hotStocksSource.sourceStatus) }}
+        </el-tag>
       </div>
       <div class="surface-body">
+        <el-alert
+          v-if="hotStocksSource.sourceStatus !== 'REALTIME'"
+          class="source-alert"
+          :type="sourceAlertType(hotStocksSource.sourceStatus)"
+          :title="sourceMessage(hotStocksSource, '板块热门股票数据源异常，暂不展示演示数据')"
+          show-icon
+          :closable="false"
+        />
         <el-table v-loading="hotStocksLoading" :data="sectorHotStocks" class="compact-table" row-key="code">
           <el-table-column prop="rank" label="排名" width="80" />
           <el-table-column label="股票" min-width="150">
@@ -116,7 +138,7 @@
             </template>
           </el-table-column>
           <template #empty>
-            <el-empty description="点击上方任意板块查看热门股票" />
+            <el-empty :description="selectedSector ? '板块热门股票实时源暂不可用' : '点击上方任意板块查看热门股票'" />
           </template>
         </el-table>
       </div>
@@ -156,12 +178,16 @@ const periodOptions = [
 const sectorHeatmapItems = ref([])
 const selectedSector = ref(null)
 const sectorHotStocks = ref([])
+const sectorSource = ref(emptySourceState())
+const hotStocksSource = ref(emptySourceState('EMPTY', '点击板块后读取热门股票'))
 const watchlistCodes = ref(new Set())
 const addingCodes = ref(new Set())
 const INDEX_REFRESH_MS = 15000
 const SECTOR_REFRESH_MS = 60000
+const SECTOR_FAILURE_BACKOFF_MS = 180000
 let indexRefreshTimer = null
 let sectorRefreshTimer = null
+let nextSectorRefreshAt = 0
 
 async function loadIndexes() {
   loading.value = true
@@ -189,6 +215,8 @@ async function loadSectorHeatmap({ silent = false } = {}) {
   sectorLoading.value = true
   try {
     const data = await fetchSectorHeatmap()
+    sectorSource.value = normalizeSourceState(data, '板块热力图数据已更新')
+    updateSectorBackoff(sectorSource.value)
     sectorHeatmapItems.value = (data.items || []).map((item) => ({
       ...item,
       value: Number(item.value || 0),
@@ -200,8 +228,18 @@ async function loadSectorHeatmap({ silent = false } = {}) {
       await selectSector(sectorHeatmapItems.value[0])
     } else if (selectedSector.value) {
       selectedSector.value = sectorHeatmapItems.value.find((item) => item.code === selectedSector.value.code) || selectedSector.value
+      if (sectorHeatmapItems.value.length) {
+        await selectSector(selectedSector.value, { silent: true })
+      }
+    }
+    if (!sectorHeatmapItems.value.length) {
+      selectedSector.value = null
+      sectorHotStocks.value = []
+      hotStocksSource.value = emptySourceState('UNAVAILABLE', '板块热力图实时源暂不可用，无法读取板块热门股票')
     }
   } catch (error) {
+    sectorSource.value = emptySourceState('UNAVAILABLE', error.message || '板块热力图获取失败')
+    updateSectorBackoff(sectorSource.value)
     if (!silent || !sectorHeatmapItems.value.length) {
       ElMessage.error(error.message || '板块热力图获取失败')
     }
@@ -210,11 +248,17 @@ async function loadSectorHeatmap({ silent = false } = {}) {
   }
 }
 
-async function selectSector(item) {
+async function selectSector(item, { silent = false } = {}) {
+  if (!item) {
+    return
+  }
   selectedSector.value = item
   hotStocksLoading.value = true
   try {
-    sectorHotStocks.value = (await fetchSectorHotStocks(item.code, 10)).map((stock) => ({
+    const data = await fetchSectorHotStocks(item.code, 10)
+    hotStocksSource.value = normalizeSourceState(data, '板块热门股票数据已更新')
+    updateSectorBackoff(hotStocksSource.value)
+    sectorHotStocks.value = (data.items || []).map((stock) => ({
       ...stock,
       price: Number(stock.price || 0),
       percent: Number(stock.percent || 0),
@@ -225,7 +269,11 @@ async function selectSector(item) {
     }))
   } catch (error) {
     sectorHotStocks.value = []
-    ElMessage.error(error.message || '板块热门股票获取失败')
+    hotStocksSource.value = emptySourceState('UNAVAILABLE', error.message || '板块热门股票获取失败')
+    updateSectorBackoff(hotStocksSource.value)
+    if (!silent) {
+      ElMessage.error(error.message || '板块热门股票获取失败')
+    }
   } finally {
     hotStocksLoading.value = false
   }
@@ -346,6 +394,72 @@ function formatAmount(value) {
   return number ? `${(number / 100000000).toFixed(2)}亿` : '暂无'
 }
 
+function emptySourceState(status = 'REALTIME', message = '') {
+  return {
+    sourceStatus: status,
+    source: '',
+    sourceUpdatedAt: '',
+    servedAt: '',
+    message,
+  }
+}
+
+function normalizeSourceState(data, fallbackMessage) {
+  return {
+    sourceStatus: String(data?.sourceStatus || 'REALTIME').toUpperCase(),
+    source: data?.source || 'EASTMONEY',
+    sourceUpdatedAt: data?.sourceUpdatedAt || data?.updatedAt || '',
+    servedAt: data?.servedAt || '',
+    message: data?.message || fallbackMessage,
+  }
+}
+
+function updateSectorBackoff(sourceState) {
+  if (sourceState.sourceStatus === 'UNAVAILABLE') {
+    nextSectorRefreshAt = Date.now() + SECTOR_FAILURE_BACKOFF_MS
+  }
+}
+
+function sourceStatusText(status) {
+  return {
+    REALTIME: '实时',
+    STALE: '非实时',
+    UNAVAILABLE: '数据源异常',
+    EMPTY: '待选择',
+  }[status] || status || '-'
+}
+
+function sourceTagType(status) {
+  return {
+    REALTIME: 'success',
+    STALE: 'warning',
+    UNAVAILABLE: 'danger',
+    EMPTY: 'info',
+  }[status] || 'info'
+}
+
+function sourceAlertType(status) {
+  return status === 'UNAVAILABLE' ? 'error' : 'warning'
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return '-'
+  }
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return String(value).replace('T', ' ').slice(0, 19)
+  }
+  const pad = (number) => String(number).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function sourceMessage(sourceState, fallback) {
+  const updatedAt = formatDateTime(sourceState.sourceUpdatedAt)
+  const suffix = updatedAt === '-' ? '' : `，上次更新时间：${updatedAt}`
+  return `${sourceState.message || fallback}${suffix}`
+}
+
 onMounted(() => {
   loadIndexes()
   loadSectorHeatmap()
@@ -356,7 +470,7 @@ onMounted(() => {
     }
   }, INDEX_REFRESH_MS)
   sectorRefreshTimer = window.setInterval(() => {
-    if (isAshareMarketOpen()) {
+    if (isAshareMarketOpen() && Date.now() >= nextSectorRefreshAt) {
       loadSectorHeatmap({ silent: true })
     }
   }, SECTOR_REFRESH_MS)
@@ -452,6 +566,10 @@ onUnmounted(() => {
   grid-auto-rows: 78px;
   grid-auto-flow: dense;
   gap: 12px;
+}
+
+.source-alert {
+  margin-bottom: 14px;
 }
 
 .sector-tile {
