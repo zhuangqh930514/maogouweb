@@ -39,6 +39,7 @@
             <el-icon><DocumentChecked /></el-icon>
             <span>AI分析</span>
           </template>
+          <el-menu-item index="/daily-insight">每日投研</el-menu-item>
           <el-menu-item index="/reports">分析报告</el-menu-item>
           <el-menu-item index="/ai-learning-evolution">学习进化</el-menu-item>
           <el-menu-item index="/ai-factor-hub">因子中心</el-menu-item>
@@ -124,6 +125,7 @@ const now = ref(new Date())
 let clockTimer = null
 
 const aiMenuPaths = [
+  '/daily-insight',
   '/reports',
   '/ai-learning-evolution',
   '/ai-factor-hub',

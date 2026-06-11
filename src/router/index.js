@@ -4,6 +4,7 @@ import MarketView from '../views/MarketView.vue'
 import WatchlistView from '../views/WatchlistView.vue'
 import PortfolioView from '../views/PortfolioView.vue'
 import ReportsView from '../views/ReportsView.vue'
+import DailyInsightView from '../views/DailyInsightView.vue'
 import AiLearningEvolutionView from '../views/AiLearningEvolutionView.vue'
 import AiFactorHubView from '../views/AiFactorHubView.vue'
 import AiStrategyValidationView from '../views/AiStrategyValidationView.vue'
@@ -33,6 +34,7 @@ const routes = [
   { path: '/market', name: 'market', component: MarketView, meta: { title: '大盘数据' } },
   { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股' } },
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
+  { path: '/daily-insight', name: 'dailyInsight', component: DailyInsightView, meta: { title: '每日投研' } },
   { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告' } },
   { path: '/ai-learning-evolution', name: 'aiLearningEvolution', component: AiLearningEvolutionView, meta: { title: '学习进化' } },
   { path: '/ai-factor-hub', name: 'aiFactorHub', component: AiFactorHubView, meta: { title: '因子中心' } },

@@ -47,6 +47,11 @@
             <strong>{{ metricValue('样本外胜率') }}</strong>
             <em>{{ metricHelper('样本外胜率', '等待复盘验证') }}</em>
           </div>
+          <div class="status-tile">
+            <span>每日投研结果</span>
+            <strong :class="dailyInsightStatusClass">{{ dailyInsightStatusText }}</strong>
+            <em>{{ dailyInsightHelper }}</em>
+          </div>
         </div>
 
         <div class="pipeline-strip">
@@ -206,12 +211,12 @@
       <div class="surface-header">
         <div>
           <h2 class="surface-title">执行日志</h2>
-          <p class="surface-subtitle">记录本页触发的任务结果，失败时可直接定位到具体环节</p>
+          <p class="surface-subtitle">优先展示后端任务日志，本地按钮触发记录作为辅助</p>
         </div>
-        <el-button text type="primary" :disabled="!logs.length" @click="clearLogs">清空日志</el-button>
+        <el-button text type="primary" :disabled="!logs.length" @click="clearLogs">清空本地日志</el-button>
       </div>
       <div class="surface-body log-board">
-        <div v-for="log in logs" :key="log.id" class="log-row" :class="log.status">
+        <div v-for="log in displayLogs" :key="log.id" class="log-row" :class="log.status">
           <span class="log-dot"></span>
           <div>
             <strong>{{ log.title }}</strong>
@@ -219,7 +224,7 @@
           </div>
           <time>{{ log.time }}</time>
         </div>
-        <el-empty v-if="!logs.length" description="暂无执行日志，先运行一次任务或流水线" />
+        <el-empty v-if="!displayLogs.length" description="暂无执行日志，先运行一次任务或流水线" />
       </div>
     </section>
   </div>
@@ -244,6 +249,7 @@ import {
   VideoPlay,
 } from '@element-plus/icons-vue'
 import { analyzeWatchlist } from '../services/ai'
+import { fetchDailyInsightToday } from '../services/dailyInsight'
 import { evolveAiStrategy, refreshAiEvolutionFactors, verifyAiEvolutionReviews } from '../services/aiEvolution'
 import {
   buildWatchlistSamples,
@@ -254,7 +260,7 @@ import {
   runLearningModelEval,
   verifyLearningLabels,
 } from '../services/aiLearning'
-import { fetchModelConfig, fetchSchedulerStatus, saveModelConfig, toggleAutoClosePipeline } from '../services/settings'
+import { fetchModelConfig, fetchSchedulerJobLogs, fetchSchedulerStatus, saveModelConfig, toggleAutoClosePipeline } from '../services/settings'
 
 const defaultPrompt =
   '你是一名A股投研助手。请基于以下行情、K线、财务和持仓数据，输出 JSON 结构：technicalAnalysis、riskWarning、buySellPoints、score。'
@@ -297,6 +303,8 @@ const runningTaskKey = ref('')
 const pipelineRunning = ref('')
 const schedulerStatus = ref(null)
 const learningDashboard = ref(null)
+const dailyInsight = ref(null)
+const backendJobLogs = ref([])
 const taskResults = reactive({})
 const logs = ref([])
 const activePipeline = ref('close')
@@ -494,6 +502,49 @@ const autoClosePipelineHelper = computed(() => {
   return schedulerStatus.value.autoClosePipelineEnabled ? '等待下一个交易日 16:00' : '开启后每个开盘日 16:00 自动执行'
 })
 
+const dailyInsightStatusText = computed(() => {
+  if (!dailyInsight.value) {
+    return '读取中'
+  }
+  if (!dailyInsight.value.snapshotReady) {
+    return '未生成'
+  }
+  const count = dailyInsight.value.summary?.itemCount || 0
+  return count > 0 ? '已生成' : '空结果'
+})
+
+const dailyInsightStatusClass = computed(() => {
+  if (!dailyInsight.value || !dailyInsight.value.snapshotReady) {
+    return 'warn'
+  }
+  return Number(dailyInsight.value.summary?.itemCount || 0) > 0 ? 'ok' : 'danger'
+})
+
+const dailyInsightHelper = computed(() => {
+  if (!dailyInsight.value) {
+    return '正在读取每日投研快照'
+  }
+  if (!dailyInsight.value.snapshotReady) {
+    return dailyInsight.value.message || '流水线完成后应生成每日投研结果'
+  }
+  const summary = dailyInsight.value.summary || {}
+  if (Number(summary.itemCount || 0) === 0) {
+    return '流水线有结果但每日投研为空，需要检查样本和预测'
+  }
+  return `推荐 ${summary.recommendationCount || 0}，回避 ${summary.avoidCount || 0}，生成 ${formatDateTime(summary.generatedAt)}`
+})
+
+const displayLogs = computed(() => [
+  ...backendJobLogs.value.map((item) => ({
+    id: `backend-${item.id}`,
+    title: item.jobName || item.jobType || '后端任务',
+    status: normalizeLogStatus(item.status),
+    message: `${item.status || '-'} · 成功 ${item.successCount || 0} / 处理 ${item.processedCount || 0}${item.errorMessage ? ` · ${item.errorMessage}` : ''}`,
+    time: formatDateTime(item.startedAt),
+  })),
+  ...logs.value,
+].slice(0, 40))
+
 function resolveTaskStatus(key) {
   if (runningTaskKey.value === key) {
     return 'running'
@@ -546,12 +597,20 @@ function metricHelper(label, fallback) {
 async function loadTaskConfig() {
   loading.value = true
   try {
-    const [config, status, dashboard] = await Promise.all([
+    const [config, status, dashboard, insight, jobLogs] = await Promise.all([
       fetchModelConfig(),
       fetchSchedulerStatus(),
       fetchLearningDashboard().catch((error) => {
         console.warn('[猫狗智投] AI 学习总览读取失败', error)
         return null
+      }),
+      fetchDailyInsightToday().catch((error) => {
+        console.warn('[猫狗智投] 每日投研结果读取失败', error)
+        return null
+      }),
+      fetchSchedulerJobLogs(20).catch((error) => {
+        console.warn('[猫狗智投] 后端任务日志读取失败', error)
+        return []
       }),
     ])
     Object.assign(form, {
@@ -562,6 +621,8 @@ async function loadTaskConfig() {
     closeTime.value = form.closeTime
     schedulerStatus.value = status
     learningDashboard.value = dashboard
+    dailyInsight.value = insight
+    backendJobLogs.value = jobLogs || []
   } catch (error) {
     ElMessage.error(error.message || '自动化任务配置获取失败')
   } finally {
@@ -584,6 +645,8 @@ async function saveTaskConfig() {
     })
     closeTime.value = form.closeTime
     schedulerStatus.value = await fetchSchedulerStatus()
+    dailyInsight.value = await fetchDailyInsightToday().catch(() => dailyInsight.value)
+    backendJobLogs.value = await fetchSchedulerJobLogs(20).catch(() => backendJobLogs.value)
     addLog('保存调度配置', 'success', `盘中间隔 ${form.intradayInterval} 分钟，收盘时间 ${form.closeTime}`)
     ElMessage.success('任务配置已保存')
   } catch (error) {
@@ -602,6 +665,7 @@ async function toggleAutoPipeline() {
   togglingAutoPipeline.value = true
   try {
     schedulerStatus.value = await toggleAutoClosePipeline(nextEnabled)
+    backendJobLogs.value = await fetchSchedulerJobLogs(20).catch(() => backendJobLogs.value)
     addLog(
       '每日自动收盘流水线',
       'success',
@@ -648,6 +712,7 @@ async function runPipeline(type) {
       }
     }
     await refreshLearningDashboard()
+    await refreshDailyInsightState()
     addLog(pipeline.title, 'success', '流水线已执行完成')
     ElMessage.success(`${pipeline.title}已完成`)
   } catch (error) {
@@ -691,6 +756,15 @@ async function refreshLearningDashboard() {
   }
 }
 
+async function refreshDailyInsightState() {
+  try {
+    dailyInsight.value = await fetchDailyInsightToday()
+    backendJobLogs.value = await fetchSchedulerJobLogs(20)
+  } catch (error) {
+    console.warn('[猫狗智投] 每日投研状态刷新失败', error)
+  }
+}
+
 function addLog(title, status, message) {
   logs.value = [
     {
@@ -706,6 +780,14 @@ function addLog(title, status, message) {
 
 function clearLogs() {
   logs.value = []
+}
+
+function normalizeLogStatus(status) {
+  const value = String(status || '').toUpperCase()
+  if (value === 'SUCCESS') return 'success'
+  if (value === 'FAILED') return 'error'
+  if (value === 'RUNNING') return 'running'
+  return 'ready'
 }
 
 function taskInputText(task) {

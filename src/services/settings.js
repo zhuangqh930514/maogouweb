@@ -22,6 +22,10 @@ export function fetchSchedulerStatus() {
   return request('/api/settings/scheduler/status')
 }
 
+export function fetchSchedulerJobLogs(limit = 20) {
+  return request(`/api/settings/scheduler/job-logs?limit=${limit}`)
+}
+
 export function toggleAutoClosePipeline(enabled) {
   return request('/api/settings/scheduler/auto-close-pipeline', {
     method: 'PUT',
