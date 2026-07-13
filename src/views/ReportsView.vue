@@ -117,6 +117,28 @@
             show-icon
             :closable="false"
           />
+          <div class="lineage-grid">
+            <div class="lineage-card">
+              <span>样本 ID</span>
+              <strong>{{ normalizedSelectedReport.sampleId || '-' }}</strong>
+              <em>用于固化本次分析快照</em>
+            </div>
+            <div class="lineage-card">
+              <span>预测 ID</span>
+              <strong>{{ normalizedSelectedReport.predictionId || '-' }}</strong>
+              <em>学习系统对应的预测记录</em>
+            </div>
+            <div class="lineage-card">
+              <span>策略版本</span>
+              <strong>{{ normalizedSelectedReport.strategyVersionId || '-' }}</strong>
+              <em>当前分析绑定的策略版本</em>
+            </div>
+            <div class="lineage-card">
+              <span>数据质量 / 置信度</span>
+              <strong>{{ formatLineagePercent(normalizedSelectedReport.dataQualityScore) }} / {{ formatLineagePercent(normalizedSelectedReport.calibratedConfidence) }}</strong>
+              <em>会参与每日投研推荐排序</em>
+            </div>
+          </div>
           <AiReportBlock title="技术面分析" :content="normalizedSelectedReport.technicalAnalysisDisplay" />
           <AiReportBlock title="风险提示" :content="normalizedSelectedReport.riskWarningDisplay" tone="yellow" />
           <AiReportBlock title="建议买卖点" :content="normalizedSelectedReport.buySellPointsDisplay" tone="green" />
@@ -134,7 +156,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Cpu, Refresh } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
@@ -143,6 +166,7 @@ import { fetchModelConfig, fetchPromptTemplates } from '../services/settings'
 import { searchStocks } from '../services/stocks'
 
 const filter = ref('全部报告')
+const route = useRoute()
 const loading = ref(false)
 const analyzing = ref(false)
 const stockAnalyzing = ref(false)
@@ -202,9 +226,16 @@ async function loadReports(code) {
     aiReports.value = await fetchAiReports(code)
     const validIds = new Set(aiReports.value.map((item) => item.id))
     selectedIds.value = selectedIds.value.filter((id) => validIds.has(id))
+    const routeReportId = Number(route.query.reportId || 0)
+    const routeCode = typeof route.query.code === 'string' ? route.query.code : ''
     selected.value = selected.value
       ? aiReports.value.find((item) => item.id === selected.value.id) || aiReports.value[0] || null
       : aiReports.value[0] || null
+    if (routeReportId) {
+      selected.value = aiReports.value.find((item) => item.id === routeReportId) || selected.value
+    } else if (routeCode) {
+      selected.value = aiReports.value.find((item) => item.code === routeCode) || selected.value
+    }
   } catch (error) {
     ElMessage.error(error.message || 'AI 报告获取失败')
   } finally {
@@ -577,6 +608,14 @@ function formatDateTime(value) {
   return `${year}-${month}-${day} ${hour}:${minute}:${second}`
 }
 
+function formatLineagePercent(value) {
+  const number = Number(value || 0)
+  if (Number.isNaN(number)) {
+    return '--'
+  }
+  return `${(number > 1 ? number : number * 100).toFixed(1)}%`
+}
+
 async function queryStockSuggestions(query, callback) {
   const keyword = query.trim()
   if (!keyword) {
@@ -802,6 +841,24 @@ onMounted(() => {
   loadCurrentModelConfig()
 })
 
+watch(
+  () => [route.query.reportId, route.query.code],
+  () => {
+    if (!aiReports.value.length) {
+      return
+    }
+    const routeReportId = Number(route.query.reportId || 0)
+    const routeCode = typeof route.query.code === 'string' ? route.query.code : ''
+    if (routeReportId) {
+      selected.value = aiReports.value.find((item) => item.id === routeReportId) || selected.value
+      return
+    }
+    if (routeCode) {
+      selected.value = aiReports.value.find((item) => item.code === routeCode) || selected.value
+    }
+  },
+)
+
 onUnmounted(() => {
   stopAnalysisProgressTimer()
 })
@@ -960,6 +1017,40 @@ onUnmounted(() => {
   gap: 16px;
 }
 
+.lineage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lineage-card {
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.lineage-card span {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.lineage-card strong {
+  display: block;
+  margin-top: 6px;
+  color: #111827;
+  font-size: 16px;
+}
+
+.lineage-card em {
+  display: block;
+  margin-top: 6px;
+  color: #6b7280;
+  font-style: normal;
+  line-height: 1.5;
+}
+
 .report-actions {
   display: flex;
   justify-content: flex-end;
@@ -984,6 +1075,10 @@ onUnmounted(() => {
   .prompt-template-select {
     flex: 1 1 100%;
     width: 100%;
+  }
+
+  .lineage-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

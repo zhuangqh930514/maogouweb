@@ -9,6 +9,8 @@
           </p>
         </div>
         <div class="header-actions">
+          <el-button @click="openResearchDailyReports">投研日报</el-button>
+          <el-button @click="openAutomationTasks">自动化任务</el-button>
           <el-button :icon="Refresh" :loading="loading" @click="loadInsight">刷新</el-button>
           <el-button type="primary" :icon="MagicStick" :loading="rebuilding" @click="rebuildInsight">
             重建今日结果
@@ -18,9 +20,9 @@
 
       <div v-loading="loading" class="surface-body">
         <el-alert
-          v-if="!dailyInsight?.snapshotReady"
-          :title="dailyInsight?.message || '今日尚未生成每日 AI 投研结果'"
-          type="warning"
+          v-if="loadError || !dailyInsight?.snapshotReady"
+          :title="loadError || dailyInsight?.message || '今日尚未生成每日 AI 投研结果'"
+          :type="loadError ? 'error' : dailyInsight?.summary?.snapshotId ? 'info' : 'warning'"
           show-icon
           :closable="false"
         />
@@ -134,6 +136,7 @@ const router = useRouter()
 const loading = ref(false)
 const rebuilding = ref(false)
 const dailyInsight = ref(null)
+const loadError = ref('')
 
 const emptySummary = {
   tradeDate: '',
@@ -157,7 +160,11 @@ const recommendations = computed(() => dailyInsight.value?.recommendations || []
 const watches = computed(() => dailyInsight.value?.watches || [])
 const avoids = computed(() => dailyInsight.value?.avoids || [])
 const latestJobLogs = computed(() => dailyInsight.value?.latestJobLogs || [])
-const snapshotStatusText = computed(() => dailyInsight.value?.snapshotReady ? '已生成快照' : '等待生成快照')
+const snapshotStatusText = computed(() => {
+  if (dailyInsight.value?.snapshotReady) return '已生成快照'
+  if (summary.value?.snapshotId) return '快照无结果'
+  return '等待生成快照'
+})
 
 const InsightTable = defineComponent({
   props: {
@@ -220,9 +227,12 @@ const InsightTable = defineComponent({
 
 async function loadInsight() {
   loading.value = true
+  loadError.value = ''
   try {
     dailyInsight.value = await fetchDailyInsightToday()
   } catch (error) {
+    dailyInsight.value = null
+    loadError.value = error.message || '每日投研结果加载失败'
     ElMessage.error(error.message || '每日投研结果加载失败')
   } finally {
     loading.value = false
@@ -233,7 +243,11 @@ async function rebuildInsight() {
   rebuilding.value = true
   try {
     dailyInsight.value = await rebuildDailyInsight()
-    ElMessage.success('每日投研结果已重建')
+    if (dailyInsight.value?.snapshotReady) {
+      ElMessage.success('每日投研结果已重建')
+    } else {
+      ElMessage.warning(dailyInsight.value?.message || '暂无可汇总数据，请先执行收盘投研流水线')
+    }
   } catch (error) {
     console.error('[猫狗智投] 每日投研结果重建失败', error)
     ElMessage.error(error.message || '每日投研结果重建失败')
@@ -242,16 +256,30 @@ async function rebuildInsight() {
   }
 }
 
-function openReport() {
-  router.push('/reports')
+function openReport(row) {
+  router.push({
+    path: '/reports',
+    query: {
+      reportId: row?.reportId || undefined,
+      code: row?.stockCode || undefined,
+    },
+  })
 }
 
-function openSample() {
-  router.push('/ai-samples')
+function openSample(row) {
+  router.push({ path: '/ai-samples', query: { sampleId: row?.sampleId || undefined } })
 }
 
 function openReviews() {
   router.push('/ai-reviews')
+}
+
+function openResearchDailyReports() {
+  router.push('/research-daily-reports')
+}
+
+function openAutomationTasks() {
+  router.push('/automation-tasks')
 }
 
 function parseFactors(value) {
@@ -265,7 +293,7 @@ function parseFactors(value) {
 }
 
 function actionText(value) {
-  return { BUY: '买入', HOLD: '持有', WATCH: '观察', REDUCE: '减仓', SELL: '卖出' }[value] || value || '-'
+  return { BUY: '买入', HOLD: '持有', WATCH: '观察', REDUCE: '减仓', SELL: '卖出', UNAVAILABLE: '数据不可用' }[value] || value || '-'
 }
 
 function actionTagType(value) {
@@ -276,11 +304,11 @@ function actionTagType(value) {
 }
 
 function freshnessText(value) {
-  return { FRESH: '实时可用', PARTIAL: '部分新鲜', STALE: '数据过期', EMPTY: '无快照' }[value] || value || '-'
+  return { FRESH: '实时可用', PARTIAL: '部分新鲜', STALE: '数据过期', EMPTY: '无新鲜数据', UNAVAILABLE: '数据不可用' }[value] || value || '-'
 }
 
 function freshnessTagType(value) {
-  return { FRESH: 'success', PARTIAL: 'warning', STALE: 'danger', EMPTY: 'info' }[value] || 'info'
+  return { FRESH: 'success', PARTIAL: 'warning', STALE: 'danger', EMPTY: 'info', UNAVAILABLE: 'danger' }[value] || 'info'
 }
 
 function statusClass(value) {

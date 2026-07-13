@@ -1,31 +1,33 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import HomeView from '../views/HomeView.vue'
-import MarketView from '../views/MarketView.vue'
-import WatchlistView from '../views/WatchlistView.vue'
-import PortfolioView from '../views/PortfolioView.vue'
-import ReportsView from '../views/ReportsView.vue'
-import DailyInsightView from '../views/DailyInsightView.vue'
-import AiLearningEvolutionView from '../views/AiLearningEvolutionView.vue'
-import AiFactorHubView from '../views/AiFactorHubView.vue'
-import AiStrategyValidationView from '../views/AiStrategyValidationView.vue'
-import AiLearningDashboardView from '../views/AiLearningDashboardView.vue'
-import AiSamplesView from '../views/AiSamplesView.vue'
-import AiEvolutionDashboardView from '../views/AiEvolutionDashboardView.vue'
-import AiReviewCenterView from '../views/AiReviewCenterView.vue'
-import AiFactorCenterView from '../views/AiFactorCenterView.vue'
-import AiFactorFactoryView from '../views/AiFactorFactoryView.vue'
-import AiStockPickerLabView from '../views/AiStockPickerLabView.vue'
-import AiStrategyEvolutionView from '../views/AiStrategyEvolutionView.vue'
-import AiStrategyLabView from '../views/AiStrategyLabView.vue'
-import AiBacktestView from '../views/AiBacktestView.vue'
-import AiModelEvalsView from '../views/AiModelEvalsView.vue'
-import SettingsView from '../views/SettingsView.vue'
-import AutomationTasksView from '../views/AutomationTasksView.vue'
-import PromptTemplatesView from '../views/PromptTemplatesView.vue'
-import ChatView from '../views/ChatView.vue'
-import LoginView from '../views/LoginView.vue'
-import RegisterView from '../views/RegisterView.vue'
 import { isAuthenticated } from '../services/auth'
+
+const HomeView = () => import('../views/HomeView.vue')
+const MarketView = () => import('../views/MarketView.vue')
+const WatchlistView = () => import('../views/WatchlistView.vue')
+const PortfolioView = () => import('../views/PortfolioView.vue')
+const ReportsView = () => import('../views/ReportsView.vue')
+const DailyInsightView = () => import('../views/DailyInsightView.vue')
+const ResearchDailyReportView = () => import('../views/ResearchDailyReportView.vue')
+const AiLearningEvolutionView = () => import('../views/AiLearningEvolutionView.vue')
+const AiFactorHubView = () => import('../views/AiFactorHubView.vue')
+const AiStrategyValidationView = () => import('../views/AiStrategyValidationView.vue')
+const AiLearningDashboardView = () => import('../views/AiLearningDashboardView.vue')
+const AiSamplesView = () => import('../views/AiSamplesView.vue')
+const AiEvolutionDashboardView = () => import('../views/AiEvolutionDashboardView.vue')
+const AiReviewCenterView = () => import('../views/AiReviewCenterView.vue')
+const AiFactorCenterView = () => import('../views/AiFactorCenterView.vue')
+const AiFactorFactoryView = () => import('../views/AiFactorFactoryView.vue')
+const AiStockPickerLabView = () => import('../views/AiStockPickerLabView.vue')
+const AiStrategyEvolutionView = () => import('../views/AiStrategyEvolutionView.vue')
+const AiStrategyLabView = () => import('../views/AiStrategyLabView.vue')
+const AiBacktestView = () => import('../views/AiBacktestView.vue')
+const AiModelEvalsView = () => import('../views/AiModelEvalsView.vue')
+const SettingsView = () => import('../views/SettingsView.vue')
+const AutomationTasksView = () => import('../views/AutomationTasksView.vue')
+const PromptTemplatesView = () => import('../views/PromptTemplatesView.vue')
+const ChatView = () => import('../views/ChatView.vue')
+const LoginView = () => import('../views/LoginView.vue')
+const RegisterView = () => import('../views/RegisterView.vue')
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { title: '登录猫狗智投', layout: 'auth', public: true } },
@@ -35,8 +37,9 @@ const routes = [
   { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股' } },
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
   { path: '/daily-insight', name: 'dailyInsight', component: DailyInsightView, meta: { title: '每日投研' } },
+  { path: '/research-daily-reports', name: 'researchDailyReports', component: ResearchDailyReportView, meta: { title: '投研日报' } },
   { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告' } },
-  { path: '/ai-learning-evolution', name: 'aiLearningEvolution', component: AiLearningEvolutionView, meta: { title: '学习进化' } },
+  { path: '/ai-learning-evolution', name: 'aiLearningEvolution', component: AiLearningEvolutionView, meta: { title: '研究实验室' } },
   { path: '/ai-factor-hub', name: 'aiFactorHub', component: AiFactorHubView, meta: { title: '因子中心' } },
   { path: '/ai-strategy-validation', name: 'aiStrategyValidation', component: AiStrategyValidationView, meta: { title: '策略验证' } },
   { path: '/ai-learning', name: 'aiLearning', component: AiLearningDashboardView, meta: { title: 'AI 学习总览' } },

@@ -8,19 +8,23 @@
         </div>
         <div class="header-actions">
           <el-button :icon="Refresh" :loading="loading" @click="loadTaskConfig">刷新状态</el-button>
+          <el-button :icon="SetUp" @click="toggleExpertMode">
+            {{ advancedVisible ? '退出专家模式' : '进入专家模式' }}
+          </el-button>
           <el-button
             :type="schedulerStatus?.autoClosePipelineEnabled ? 'danger' : 'success'"
             :icon="Timer"
             :loading="togglingAutoPipeline"
+            :disabled="schedulerStatus && !schedulerStatus.enabled"
             @click="toggleAutoPipeline"
           >
             {{ schedulerStatus?.autoClosePipelineEnabled ? '关闭每日自动' : '开启每日自动' }}
           </el-button>
-          <el-button :icon="VideoPlay" :loading="pipelineRunning === 'intraday'" @click="runPipeline('intraday')">
+          <el-button v-if="advancedVisible" :icon="VideoPlay" :loading="pipelineRunning === 'intraday'" @click="runPipeline('intraday')">
             盘中快速巡检
           </el-button>
           <el-button type="primary" :icon="Finished" :loading="pipelineRunning === 'close'" @click="runPipeline('close')">
-            收盘学习流水线
+            立即生成今日投研
           </el-button>
         </div>
       </div>
@@ -38,6 +42,16 @@
             <em>每个开盘日 16:00 后端自动执行收盘学习顺序</em>
           </div>
           <div class="status-tile">
+            <span>周度策略验证</span>
+            <strong>{{ schedulerStatus?.nextWeeklyEvolutionTime || '-' }}</strong>
+            <em>自动执行 Walk-forward、组合回测和 Challenger 影子评估</em>
+          </div>
+          <div class="status-tile">
+            <span>月度模型训练</span>
+            <strong>{{ schedulerStatus?.nextMonthlyTrainingTime || '-' }}</strong>
+            <em>样本达标才训练；未通过样本外质量门不会进入影子运行</em>
+          </div>
+          <div class="status-tile">
             <span>学习样本</span>
             <strong>{{ metricValue('样本数') }}</strong>
             <em>{{ metricHelper('样本数', '等待样本构建') }}</em>
@@ -51,6 +65,12 @@
             <span>每日投研结果</span>
             <strong :class="dailyInsightStatusClass">{{ dailyInsightStatusText }}</strong>
             <em>{{ dailyInsightHelper }}</em>
+          </div>
+          <div class="status-tile report-tile">
+            <span>投研日报</span>
+            <strong :class="researchDailyReportStatusClass">{{ researchDailyReportStatusText }}</strong>
+            <em>{{ researchDailyReportHelper }}</em>
+            <el-button text type="primary" @click="openResearchDailyReport">查看最新日报</el-button>
           </div>
         </div>
 
@@ -69,7 +89,7 @@
       </div>
     </section>
 
-    <div class="section-grid automation-layout">
+    <div v-if="advancedVisible" class="section-grid automation-layout">
       <section class="surface task-surface">
         <div class="surface-header">
           <div>
@@ -151,20 +171,20 @@
       </section>
     </div>
 
-    <section class="surface">
+    <section v-if="advancedVisible" class="surface">
       <div class="surface-header">
         <div>
-          <h2 class="surface-title">调度配置</h2>
-          <p class="surface-subtitle">每日自动收盘流水线由本页按钮启停；模型、范围和 Top K 参数会被手动与自动任务复用</p>
+          <h2 class="surface-title">旧版研究参数（LEGACY）</h2>
+          <p class="surface-subtitle">仅供专家手动任务兼容使用，不控制 V2 每日 16:00 自动流水线</p>
         </div>
       </div>
       <div class="surface-body">
         <el-form :model="form" label-position="top">
           <div class="form-grid four">
-            <el-form-item label="盘中分析间隔">
+            <el-form-item label="旧版盘中分析间隔">
               <el-input-number v-model="form.intradayInterval" :min="5" :step="5" controls-position="right" />
             </el-form-item>
-            <el-form-item label="收盘后分析时间">
+            <el-form-item label="旧版报告时间">
               <el-time-picker v-model="closeTime" format="HH:mm" value-format="HH:mm" />
             </el-form-item>
             <el-form-item label="分析范围">
@@ -200,7 +220,7 @@
             </el-form-item>
           </div>
           <div class="form-actions">
-            <el-button type="primary" :icon="Timer" :loading="saving" @click="saveTaskConfig">保存调度配置</el-button>
+            <el-button type="primary" :icon="Timer" :loading="saving" @click="saveTaskConfig">保存专家参数</el-button>
             <el-button :icon="Refresh" :loading="loading" @click="loadTaskConfig">重新读取</el-button>
           </div>
         </el-form>
@@ -232,7 +252,8 @@
 
 <script setup>
 import { computed, markRaw, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Aim,
   CircleCheck,
@@ -260,7 +281,14 @@ import {
   runLearningModelEval,
   verifyLearningLabels,
 } from '../services/aiLearning'
-import { fetchModelConfig, fetchSchedulerJobLogs, fetchSchedulerStatus, saveModelConfig, toggleAutoClosePipeline } from '../services/settings'
+import {
+  fetchModelConfig,
+  fetchSchedulerJobLogs,
+  fetchSchedulerStatus,
+  runAutoClosePipelineNow,
+  saveModelConfig,
+  toggleAutoClosePipeline,
+} from '../services/settings'
 
 const defaultPrompt =
   '你是一名A股投研助手。请基于以下行情、K线、财务和持仓数据，输出 JSON 结构：technicalAnalysis、riskWarning、buySellPoints、score。'
@@ -308,6 +336,8 @@ const backendJobLogs = ref([])
 const taskResults = reactive({})
 const logs = ref([])
 const activePipeline = ref('close')
+const advancedVisible = ref(false)
+const router = useRouter()
 
 const pipelineDefinitions = {
   intraday: {
@@ -315,8 +345,18 @@ const pipelineDefinitions = {
     tasks: ['analyze', 'rank'],
   },
   close: {
-    title: '收盘学习流水线',
-    tasks: ['sample', 'analyze', 'verify', 'factor', 'rank', 'experiment', 'backtest', 'modelEval'],
+    title: '每日收盘投研流水线',
+    steps: [
+      '抓取收盘数据',
+      '检查数据质量',
+      '固化不可变样本',
+      '复盘成熟预测',
+      '计算因子',
+      '生成 V2 预测',
+      '生成个股报告',
+      '汇总每日投研',
+      '生成投研日报',
+    ],
   },
 }
 
@@ -452,6 +492,14 @@ const taskCards = computed(() => taskDefinitions.map((task) => ({
 const currentPipelineTitle = computed(() => pipelineDefinitions[activePipeline.value].title)
 
 const currentPipelineSteps = computed(() => {
+  const steps = pipelineDefinitions[activePipeline.value].steps
+  if (steps) {
+    return steps.map((title, index) => ({
+      key: `close-${index}`,
+      order: String(index + 1).padStart(2, '0'),
+      title,
+    }))
+  }
   const tasks = pipelineDefinitions[activePipeline.value].tasks
   return tasks.map((key, index) => {
     const task = taskDefinitions.find((item) => item.key === key)
@@ -470,6 +518,9 @@ const autoClosePipelineText = computed(() => {
   if (schedulerStatus.value.autoClosePipelineRunning) {
     return '运行中'
   }
+  if (!schedulerStatus.value.enabled) {
+    return '系统调度未启用'
+  }
   return schedulerStatus.value.autoClosePipelineEnabled ? '已开启' : '已关闭'
 })
 
@@ -479,6 +530,9 @@ const autoClosePipelineClass = computed(() => {
   }
   if (schedulerStatus.value.autoClosePipelineRunning) {
     return 'warn'
+  }
+  if (!schedulerStatus.value.enabled) {
+    return 'danger'
   }
   return schedulerStatus.value.autoClosePipelineEnabled ? 'ok' : 'warn'
 })
@@ -490,6 +544,9 @@ const autoClosePipelineHelper = computed(() => {
   const status = schedulerStatus.value.autoClosePipelineLastStatus || 'IDLE'
   const finishedAt = schedulerStatus.value.autoClosePipelineLastFinishedAt
   const message = schedulerStatus.value.autoClosePipelineLastMessage
+  if (!schedulerStatus.value.enabled) {
+    return '服务端全局调度已关闭，需要启用 MAOGOU_SCHEDULER_ENABLED'
+  }
   if (status === 'SUCCESS') {
     return finishedAt ? `上次成功：${finishedAt}` : '上次执行成功'
   }
@@ -506,7 +563,7 @@ const dailyInsightStatusText = computed(() => {
   if (!dailyInsight.value) {
     return '读取中'
   }
-  if (!dailyInsight.value.snapshotReady) {
+  if (!dailyInsight.value.summary?.snapshotId) {
     return '未生成'
   }
   const count = dailyInsight.value.summary?.itemCount || 0
@@ -514,24 +571,54 @@ const dailyInsightStatusText = computed(() => {
 })
 
 const dailyInsightStatusClass = computed(() => {
-  if (!dailyInsight.value || !dailyInsight.value.snapshotReady) {
+  if (!dailyInsight.value?.summary?.snapshotId) {
     return 'warn'
   }
-  return Number(dailyInsight.value.summary?.itemCount || 0) > 0 ? 'ok' : 'danger'
+  return Number(dailyInsight.value.summary?.itemCount || 0) > 0 ? 'ok' : 'warn'
 })
 
 const dailyInsightHelper = computed(() => {
   if (!dailyInsight.value) {
     return '正在读取每日投研快照'
   }
-  if (!dailyInsight.value.snapshotReady) {
+  if (!dailyInsight.value.summary?.snapshotId) {
     return dailyInsight.value.message || '流水线完成后应生成每日投研结果'
   }
   const summary = dailyInsight.value.summary || {}
   if (Number(summary.itemCount || 0) === 0) {
-    return '流水线有结果但每日投研为空，需要检查样本和预测'
+    return dailyInsight.value.message || '快照已生成，当前自选股没有可用样本或预测'
   }
   return `推荐 ${summary.recommendationCount || 0}，回避 ${summary.avoidCount || 0}，生成 ${formatDateTime(summary.generatedAt)}`
+})
+
+const researchDailyReportStatusText = computed(() => {
+  const report = schedulerStatus.value?.latestResearchDailyReport
+  if (!report) {
+    return '未生成'
+  }
+  return report.reportStatus || 'UNKNOWN'
+})
+
+const researchDailyReportStatusClass = computed(() => {
+  const report = schedulerStatus.value?.latestResearchDailyReport
+  if (!report) {
+    return 'warn'
+  }
+  if (['READY', 'SUCCESS'].includes(report.reportStatus)) {
+    return 'ok'
+  }
+  if (['DATA_UNAVAILABLE', 'EMPTY_RESULT', 'PARTIAL_READY', 'PARTIAL_SUCCESS'].includes(report.reportStatus)) {
+    return 'warn'
+  }
+  return 'danger'
+})
+
+const researchDailyReportHelper = computed(() => {
+  const report = schedulerStatus.value?.latestResearchDailyReport
+  if (!report) {
+    return '收盘自动化完成后会自动生成一份投研日报'
+  }
+  return `${report.tradeDate || '-'} · 推荐 ${report.recommendationCount || 0} / 观察 ${report.watchCount || 0} / 回避 ${report.avoidCount || 0} · ${report.generatedAt || '未记录生成时间'}`
 })
 
 const displayLogs = computed(() => [
@@ -592,6 +679,31 @@ function metricValue(label) {
 function metricHelper(label, fallback) {
   const metric = learningDashboard.value?.metrics?.find((item) => item.label === label)
   return metric?.helper || fallback
+}
+
+function openResearchDailyReport() {
+  router.push('/research-daily-reports')
+}
+
+async function toggleExpertMode() {
+  if (advancedVisible.value) {
+    advancedVisible.value = false
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '专家模式包含样本、因子、实验和回测等独立任务。普通使用只需开启每日自动并查看投研结果。',
+      '进入专家模式',
+      {
+        confirmButtonText: '确认进入',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+    advancedVisible.value = true
+  } catch {
+    advancedVisible.value = false
+  }
 }
 
 async function loadTaskConfig() {
@@ -705,6 +817,18 @@ async function runPipeline(type) {
   pipelineRunning.value = type
   addLog(pipeline.title, 'running', '流水线开始执行')
   try {
+    if (type === 'close') {
+      await runAutoClosePipelineNow()
+      await loadTaskConfig()
+      const status = schedulerStatus.value?.autoClosePipelineLastStatus
+      if (status === 'FAILED') {
+        throw new Error(schedulerStatus.value?.autoClosePipelineLastMessage || '每日收盘投研流水线执行失败')
+      }
+      addLog(pipeline.title, status === 'PARTIAL_SUCCESS' ? 'warn' : 'success',
+        schedulerStatus.value?.autoClosePipelineLastMessage || '每日投研与投研日报已生成')
+      ElMessage.success('今日投研与日报已生成')
+      return
+    }
     for (const key of pipeline.tasks) {
       const task = taskDefinitions.find((item) => item.key === key)
       if (task) {

@@ -33,6 +33,12 @@ export function toggleAutoClosePipeline(enabled) {
   })
 }
 
+export function runAutoClosePipelineNow() {
+  return request('/api/settings/scheduler/auto-close-pipeline/run', {
+    method: 'POST',
+  })
+}
+
 export function fetchPromptTemplates() {
   return request('/api/prompt-templates')
 }

@@ -40,10 +40,9 @@
             <span>AI分析</span>
           </template>
           <el-menu-item index="/daily-insight">每日投研</el-menu-item>
+          <el-menu-item index="/research-daily-reports">投研日报</el-menu-item>
           <el-menu-item index="/reports">分析报告</el-menu-item>
-          <el-menu-item index="/ai-learning-evolution">学习进化</el-menu-item>
-          <el-menu-item index="/ai-factor-hub">因子中心</el-menu-item>
-          <el-menu-item index="/ai-strategy-validation">策略验证</el-menu-item>
+          <el-menu-item index="/ai-learning-evolution">研究实验室</el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
@@ -74,6 +73,11 @@
         <div>
           <h1>{{ route.meta.title }}</h1>
           <div class="market-clock">{{ marketClockText }}</div>
+        </div>
+        <div class="mobile-navigation">
+          <el-select :model-value="route.path" aria-label="页面导航" @change="handleMobileNavigate">
+            <el-option v-for="item in mobileNavigation" :key="item.path" :label="item.label" :value="item.path" />
+          </el-select>
         </div>
         <div class="topbar-actions">
           <el-button :icon="Setting">设置</el-button>
@@ -126,6 +130,7 @@ let clockTimer = null
 
 const aiMenuPaths = [
   '/daily-insight',
+  '/research-daily-reports',
   '/reports',
   '/ai-learning-evolution',
   '/ai-factor-hub',
@@ -141,6 +146,19 @@ const aiMenuPaths = [
   '/ai-reviews',
   '/ai-factors',
   '/ai-strategies',
+]
+const mobileNavigation = [
+  { path: '/', label: '资讯首页' },
+  { path: '/market', label: '大盘数据' },
+  { path: '/watchlist', label: '自选股' },
+  { path: '/portfolio', label: '持仓记录' },
+  { path: '/daily-insight', label: '每日投研' },
+  { path: '/research-daily-reports', label: '投研日报' },
+  { path: '/reports', label: '分析报告' },
+  { path: '/ai-learning-evolution', label: '研究实验室' },
+  { path: '/automation-tasks', label: '自动化任务' },
+  { path: '/settings', label: '模型配置' },
+  { path: '/chat', label: '猫狗畅聊' },
 ]
 const defaultOpeneds = aiMenuPaths.includes(route.path) ? ['ai-analysis'] : []
 
@@ -184,6 +202,12 @@ function handleUserCommand(command) {
   if (command === 'logout') {
     logout()
     router.push('/login')
+  }
+}
+
+function handleMobileNavigate(path) {
+  if (path && path !== route.path) {
+    router.push(path)
   }
 }
 
@@ -330,8 +354,67 @@ function handleUserCommand(command) {
   gap: 12px;
 }
 
+.mobile-navigation {
+  display: none;
+}
+
 .main {
   padding: 24px 28px 40px;
   background: #f3f6fb;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    display: block;
+  }
+
+  .sidebar {
+    display: none;
+  }
+
+  .shell > :deep(.el-container) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .topbar {
+    position: sticky;
+    height: auto !important;
+    min-height: 64px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .topbar h1 {
+    font-size: 17px;
+    line-height: 24px;
+  }
+
+  .market-clock,
+  .topbar-actions > .el-button {
+    display: none;
+  }
+
+  .mobile-navigation {
+    display: block;
+    width: min(150px, 42vw);
+    margin-left: auto;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  .topbar-actions :deep(.el-button) {
+    padding: 8px;
+  }
+
+  .main {
+    width: 100%;
+    min-width: 0;
+    padding: 12px 10px 28px;
+    overflow: hidden;
+  }
 }
 </style>

@@ -148,3 +148,44 @@ body.auth-body {
     grid-template-columns: 1fr;
   }
 }
+
+@media (max-width: 760px) {
+  body {
+    min-width: 0;
+  }
+
+  .page,
+  .section-grid,
+  .surface,
+  .surface-header,
+  .surface-body {
+    min-width: 0;
+  }
+
+  .page,
+  .section-grid {
+    gap: 14px;
+  }
+
+  .grid-4,
+  .grid-2,
+  .grid-main-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .surface-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    padding: 16px 14px 0;
+  }
+
+  .surface-body {
+    padding: 16px 14px 18px;
+    overflow-x: auto;
+  }
+
+  .surface-title {
+    font-size: 16px;
+    line-height: 24px;
+  }
+}

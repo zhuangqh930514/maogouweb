@@ -16,7 +16,7 @@
           <el-form :model="form" label-position="top">
             <el-form-item label="接入类型">
               <el-radio-group v-model="provider" class="provider-selector" @change="applyProviderPreset">
-                <el-radio-button v-for="preset in modelPresets" :key="preset.key" :label="preset.key">
+                <el-radio-button v-for="preset in modelPresets" :key="preset.key" :value="preset.key">
                   {{ preset.label }}
                 </el-radio-button>
               </el-radio-group>
