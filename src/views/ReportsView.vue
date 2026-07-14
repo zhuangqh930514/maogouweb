@@ -184,6 +184,11 @@
               <em>会参与每日投研推荐排序</em>
             </div>
           </div>
+          <ConditionalTradeStrategy
+            v-if="normalizedSelectedReport.conditionalStrategyDisplay"
+            :strategy="normalizedSelectedReport.conditionalStrategyDisplay"
+            :reviews="normalizedSelectedReport.tradePlanReviews || []"
+          />
           <AiReportBlock title="技术面分析" :content="normalizedSelectedReport.technicalAnalysisDisplay" />
           <AiReportBlock title="风险提示" :content="normalizedSelectedReport.riskWarningDisplay" tone="yellow" />
           <AiReportBlock title="建议买卖点" :content="normalizedSelectedReport.buySellPointsDisplay" tone="green" />
@@ -206,6 +211,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Cpu, Refresh } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
+import ConditionalTradeStrategy from '../components/ConditionalTradeStrategy.vue'
 import { analyzeStock, analyzeWatchlist, deleteAiReports, fetchAiReportPage, fetchAiReports } from '../services/ai'
 import { fetchModelConfig, fetchPromptTemplates } from '../services/settings'
 import { searchStocks } from '../services/stocks'
@@ -263,6 +269,7 @@ const normalizedSelectedReport = computed(() => {
     technicalAnalysisDisplay: normalizeReportField(selected.value.technicalAnalysis, 'technicalAnalysis'),
     riskWarningDisplay: normalizeReportField(selected.value.riskWarning, 'riskWarning'),
     buySellPointsDisplay: normalizeReportField(selected.value.buySellPoints, 'buySellPoints'),
+    conditionalStrategyDisplay: normalizeConditionalStrategy(selected.value.conditionalStrategy),
     promptSummaryDisplay: normalizeReportField(selected.value.promptSummary, 'promptSummary'),
   }
 })
@@ -510,6 +517,17 @@ function normalizeReportField(value, field) {
     return raw
   }
   return formatStructuredField(parsed, field)
+}
+
+function normalizeConditionalStrategy(value) {
+  if (!value) {
+    return null
+  }
+  if (isPlainObject(value)) {
+    return value.schemaVersion ? value : null
+  }
+  const parsed = parseJsonSafely(String(value))
+  return isPlainObject(parsed) && parsed.schemaVersion ? parsed : null
 }
 
 function formatStructuredField(payload, field) {
