@@ -46,9 +46,15 @@
             </template>
           </el-table-column>
           <el-table-column prop="tradeDate" label="交易日" width="120" />
-          <el-table-column prop="samplePhase" label="阶段" width="120" />
-          <el-table-column prop="universeCode" label="股票池" width="120" />
-          <el-table-column prop="marketRegime" label="市场环境" width="110" />
+          <el-table-column prop="samplePhase" label="阶段" width="120">
+            <template #default="{ row }">{{ statusLabel(row.samplePhase) }}</template>
+          </el-table-column>
+          <el-table-column prop="universeCode" label="股票池" width="120">
+            <template #default="{ row }">{{ statusLabel(row.universeCode) }}</template>
+          </el-table-column>
+          <el-table-column prop="marketRegime" label="市场环境" width="110">
+            <template #default="{ row }">{{ statusLabel(row.marketRegime, '待确认') }}</template>
+          </el-table-column>
           <el-table-column label="数据质量" width="160">
             <template #default="{ row }">
               <el-progress :percentage="Number(row.dataQualityScore || 0)" :stroke-width="8" />
@@ -99,8 +105,12 @@
         <section class="detail-panel">
           <div class="detail-title">预测与标签</div>
           <el-table :data="detail.predictions || []" class="compact-table">
-            <el-table-column prop="action" label="动作" width="90" />
-            <el-table-column prop="targetDirection" label="方向" width="90" />
+            <el-table-column prop="action" label="动作" width="90">
+              <template #default="{ row }">{{ statusLabel(row.action, '待确认') }}</template>
+            </el-table-column>
+            <el-table-column prop="targetDirection" label="方向" width="90">
+              <template #default="{ row }">{{ statusLabel(row.targetDirection, '待确认') }}</template>
+            </el-table-column>
             <el-table-column prop="horizonDays" label="周期" width="80" />
             <el-table-column label="分数" width="120">
               <template #default="{ row }">{{ Number(row.score || 0).toFixed(1) }}</template>
@@ -146,6 +156,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Collection, Refresh } from '@element-plus/icons-vue'
 import { buildWatchlistSamples, fetchLearningSampleDetail, fetchLearningSamples } from '../services/aiLearning'
+import { statusLabel } from '../utils/statusLabels'
 
 const stockCode = ref('')
 const loading = ref(false)

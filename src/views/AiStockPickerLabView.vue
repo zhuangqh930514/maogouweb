@@ -47,7 +47,9 @@
               <el-tag :type="actionType(row.action)" effect="plain">{{ actionText(row.action) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="targetDirection" label="方向" width="100" />
+          <el-table-column prop="targetDirection" label="方向" width="100">
+            <template #default="{ row }">{{ statusLabel(row.targetDirection, '待确认') }}</template>
+          </el-table-column>
           <el-table-column prop="horizonDays" label="周期" width="80">
             <template #default="{ row }">T+{{ row.horizonDays }}</template>
           </el-table-column>
@@ -90,6 +92,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Refresh } from '@element-plus/icons-vue'
 import { fetchLearningPredictions, rankLearningUniverse } from '../services/aiLearning'
+import { statusLabel } from '../utils/statusLabels'
 
 const loading = ref(false)
 const ranking = ref(false)
@@ -138,7 +141,7 @@ function parseReasons(value) {
 }
 
 function actionText(value) {
-  return { BUY: '买入', HOLD: '持有', REDUCE: '减仓', SELL: '卖出', WATCH: '观察' }[value] || value || '-'
+  return statusLabel(value)
 }
 
 function actionType(value) {

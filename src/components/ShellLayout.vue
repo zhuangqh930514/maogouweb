@@ -39,7 +39,6 @@
             <el-icon><DocumentChecked /></el-icon>
             <span>AI分析</span>
           </template>
-          <el-menu-item index="/daily-insight">每日投研</el-menu-item>
           <el-menu-item index="/research-daily-reports">投研日报</el-menu-item>
           <el-menu-item index="/reports">分析报告</el-menu-item>
           <el-menu-item index="/ai-learning-evolution">研究实验室</el-menu-item>
@@ -129,7 +128,6 @@ const now = ref(new Date())
 let clockTimer = null
 
 const aiMenuPaths = [
-  '/daily-insight',
   '/research-daily-reports',
   '/reports',
   '/ai-learning-evolution',
@@ -152,7 +150,6 @@ const mobileNavigation = [
   { path: '/market', label: '大盘数据' },
   { path: '/watchlist', label: '自选股' },
   { path: '/portfolio', label: '持仓记录' },
-  { path: '/daily-insight', label: '每日投研' },
   { path: '/research-daily-reports', label: '投研日报' },
   { path: '/reports', label: '分析报告' },
   { path: '/ai-learning-evolution', label: '研究实验室' },

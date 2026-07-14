@@ -22,7 +22,7 @@
       <div class="surface-header">
         <div>
           <h2 class="surface-title">评测记录</h2>
-          <p class="surface-subtitle">基于历史 AI 报告和 T+N 复盘标签统计，样本不足时会标记 LOW_SAMPLE</p>
+          <p class="surface-subtitle">基于历史 AI 报告和 T+N 复盘标签统计，样本不足时会明确提示</p>
         </div>
       </div>
       <div class="surface-body">
@@ -33,7 +33,9 @@
               <div class="muted mono">{{ row.provider }}</div>
             </template>
           </el-table-column>
-          <el-table-column prop="evalType" label="类型" width="150" />
+          <el-table-column prop="evalType" label="类型" width="150">
+            <template #default="{ row }">{{ statusLabel(row.evalType) }}</template>
+          </el-table-column>
           <el-table-column label="JSON 成功率" width="150">
             <template #default="{ row }">
               <el-progress :percentage="Number(row.jsonSuccessRate || 0)" :stroke-width="8" />
@@ -52,7 +54,7 @@
           </el-table-column>
           <el-table-column prop="status" label="状态" width="100">
             <template #default="{ row }">
-              <el-tag type="success" effect="plain">{{ row.status }}</el-tag>
+              <el-tag type="success" effect="plain">{{ statusLabel(row.status, '待确认') }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="createdAt" label="时间" min-width="170">
@@ -70,6 +72,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { DataAnalysis, Refresh } from '@element-plus/icons-vue'
 import { fetchLearningModelEvals, runLearningModelEval } from '../services/aiLearning'
+import { statusLabel } from '../utils/statusLabels'
 
 const form = reactive({ evalType: 'REPORT_JSON', sampleCount: 30 })
 const data = ref(null)

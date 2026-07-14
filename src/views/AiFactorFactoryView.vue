@@ -45,8 +45,12 @@
                 <div class="muted mono">{{ row.factorCode }}</div>
               </template>
             </el-table-column>
-            <el-table-column prop="factorGroup" label="分类" width="120" />
-            <el-table-column prop="marketRegime" label="环境" width="100" />
+            <el-table-column prop="factorGroup" label="分类" width="120">
+              <template #default="{ row }">{{ statusLabel(row.factorGroup) }}</template>
+            </el-table-column>
+            <el-table-column prop="marketRegime" label="环境" width="100">
+              <template #default="{ row }">{{ statusLabel(row.marketRegime, '待确认') }}</template>
+            </el-table-column>
             <el-table-column prop="sampleCount" label="样本" width="80" align="right" />
             <el-table-column label="胜率" width="100" align="right">
               <template #default="{ row }">{{ formatPercent(row.successRate) }}</template>
@@ -105,7 +109,9 @@
               <div class="muted mono">{{ row.factorCode }}</div>
             </template>
           </el-table-column>
-          <el-table-column prop="factorGroup" label="分类" width="130" />
+          <el-table-column prop="factorGroup" label="分类" width="130">
+            <template #default="{ row }">{{ statusLabel(row.factorGroup) }}</template>
+          </el-table-column>
           <el-table-column prop="direction" label="方向" width="110">
             <template #default="{ row }">
               <el-tag :type="directionType(row.direction)" effect="plain">{{ directionText(row.direction) }}</el-tag>
@@ -131,6 +137,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CircleCheck, Refresh } from '@element-plus/icons-vue'
 import { fetchFactorFactory, verifyLearningLabels } from '../services/aiLearning'
+import { statusLabel } from '../utils/statusLabels'
 
 const loading = ref(false)
 const verifying = ref(false)

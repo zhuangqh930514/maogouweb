@@ -31,10 +31,12 @@
           </el-table-column>
           <el-table-column prop="status" label="状态" width="110">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'COMPLETED' ? 'success' : 'info'" effect="plain">{{ row.status }}</el-tag>
+              <el-tag :type="row.status === 'COMPLETED' ? 'success' : 'info'" effect="plain">{{ statusLabel(row.status, '待确认') }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="universeCode" label="股票池" width="110" />
+          <el-table-column prop="universeCode" label="股票池" width="110">
+            <template #default="{ row }">{{ statusLabel(row.universeCode) }}</template>
+          </el-table-column>
           <el-table-column label="训练窗口" min-width="180">
             <template #default="{ row }">{{ row.trainStartDate || '-' }} ~ {{ row.trainEndDate || '-' }}</template>
           </el-table-column>
@@ -74,6 +76,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { MagicStick, Refresh } from '@element-plus/icons-vue'
 import { fetchLearningExperiments, runLearningExperiment } from '../services/aiLearning'
+import { statusLabel } from '../utils/statusLabels'
 
 const title = ref('')
 const data = ref(null)

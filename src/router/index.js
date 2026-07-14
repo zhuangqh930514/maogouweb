@@ -6,7 +6,6 @@ const MarketView = () => import('../views/MarketView.vue')
 const WatchlistView = () => import('../views/WatchlistView.vue')
 const PortfolioView = () => import('../views/PortfolioView.vue')
 const ReportsView = () => import('../views/ReportsView.vue')
-const DailyInsightView = () => import('../views/DailyInsightView.vue')
 const ResearchDailyReportView = () => import('../views/ResearchDailyReportView.vue')
 const AiLearningEvolutionView = () => import('../views/AiLearningEvolutionView.vue')
 const AiFactorHubView = () => import('../views/AiFactorHubView.vue')
@@ -36,7 +35,7 @@ const routes = [
   { path: '/market', name: 'market', component: MarketView, meta: { title: '大盘数据' } },
   { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股' } },
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
-  { path: '/daily-insight', name: 'dailyInsight', component: DailyInsightView, meta: { title: '每日投研' } },
+  { path: '/daily-insight', redirect: '/research-daily-reports' },
   { path: '/research-daily-reports', name: 'researchDailyReports', component: ResearchDailyReportView, meta: { title: '投研日报' } },
   { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告' } },
   { path: '/ai-learning-evolution', name: 'aiLearningEvolution', component: AiLearningEvolutionView, meta: { title: '研究实验室' } },

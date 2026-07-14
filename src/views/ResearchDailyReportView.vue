@@ -5,15 +5,21 @@
         <div>
           <h2 class="surface-title">投研日报</h2>
           <p class="surface-subtitle">
-            交易日 {{ activeReport?.tradeDate || '-' }} · {{ activeReport?.reportStatus || 'EMPTY' }} ·
-            {{ activeReport?.freshnessStatus || 'UNAVAILABLE' }}
+            交易日 {{ activeReport?.tradeDate || '-' }} · {{ statusLabel(activeReport?.reportStatus, '暂无数据') }} ·
+            {{ statusLabel(activeReport?.freshnessStatus, '数据不可用') }}
           </p>
         </div>
         <div class="header-actions">
           <el-button :icon="Refresh" :loading="loading" @click="loadReports">刷新</el-button>
-          <el-button type="primary" :icon="MagicStick" :loading="rebuilding" @click="rebuildReport">
-            重建今日日报
-          </el-button>
+          <el-dropdown trigger="click" @command="handleHeaderCommand">
+            <el-button :icon="MoreFilled" :loading="rebuilding">更多</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="automation">查看自动化任务</el-dropdown-item>
+                <el-dropdown-item command="rebuild" divided>从当前快照重建日报</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
         </div>
       </div>
 
@@ -39,33 +45,44 @@
           <div class="metric-item risk">
             <span>持仓风险</span><strong class="mono">{{ activeReport.holdingRiskCount || 0 }}</strong>
           </div>
+          <div class="metric-item hit-rate">
+            <span>平均命中率</span><strong class="mono">{{ formatPercent(activeReport.content?.insightSummary?.overallHitRate) }}</strong>
+          </div>
+          <div class="metric-item quality">
+            <span>数据质量</span><strong class="mono">{{ formatPercent(activeReport.content?.freshness?.dataQualityScore) }}</strong>
+          </div>
         </div>
 
         <div v-if="activeReport" class="status-grid">
           <div class="status-tile">
             <span>日报版本</span>
             <strong>V{{ activeReport.reportVersion }}</strong>
-            <em>{{ activeReport.title }}</em>
+            <em>{{ localizeStatusText(activeReport.title) }}</em>
           </div>
           <div class="status-tile">
             <span>生成时间</span>
             <strong>{{ formatDateTime(activeReport.generatedAt) }}</strong>
-            <em>{{ activeReport.executiveSummary }}</em>
+            <em>{{ localizeStatusText(activeReport.executiveSummary) }}</em>
+          </div>
+          <div class="status-tile">
+            <span>快照时间</span>
+            <strong>{{ formatDateTime(activeReport.content?.insightSummary?.generatedAt) }}</strong>
+            <em>最新样本 {{ formatDateTime(activeReport.content?.freshness?.latestSampleAt) }}</em>
           </div>
           <div class="status-tile">
             <span>策略状态</span>
-            <strong>{{ activeReport.marketRegime || 'UNKNOWN' }}</strong>
+            <strong>{{ statusLabel(activeReport.marketRegime, '待确认') }}</strong>
             <em>{{ activeReport.content?.strategyPerformance?.title || '未绑定策略' }}</em>
           </div>
           <div class="status-tile">
             <span>流水线状态</span>
-            <strong :class="statusClass(activeReport.reportStatus)">{{ activeReport.reportStatus }}</strong>
+            <strong :class="statusClass(activeReport.reportStatus)">{{ statusLabel(activeReport.reportStatus, '待确认') }}</strong>
             <em>{{ activeReport.content?.pipeline?.errorMessage || '自动化结果已同步到日报' }}</em>
           </div>
           <div class="status-tile">
-            <span>自动化闭环</span>
-            <strong>{{ activeReport.pipelineRunId ? '已串联' : '手动生成' }}</strong>
-            <em>{{ activeReport.pipelineRunId ? `流水线 #${activeReport.pipelineRunId} 已自动收口为日报` : '当前日报不是自动收盘流水线生成' }}</em>
+            <span>低样本结论</span>
+            <strong>{{ activeReport.content?.insightSummary?.lowSampleCount || 0 }}</strong>
+            <em>共 {{ activeReport.content?.insightSummary?.itemCount || 0 }} 只股票进入日报</em>
           </div>
         </div>
       </div>
@@ -82,19 +99,22 @@
         </div>
         <div class="surface-body" v-if="activeReport">
           <div class="summary-block">
-            <p>{{ activeReport.executiveSummary }}</p>
-          </div>
-          <div class="pill-grid">
-            <article class="pill-card recommend"><span>推荐关注</span><strong>{{ activeReport.recommendationCount || 0 }}</strong></article>
-            <article class="pill-card watch"><span>谨慎观察</span><strong>{{ activeReport.watchCount || 0 }}</strong></article>
-            <article class="pill-card avoid"><span>建议回避</span><strong>{{ activeReport.avoidCount || 0 }}</strong></article>
-            <article class="pill-card risk"><span>持仓风险</span><strong>{{ activeReport.holdingRiskCount || 0 }}</strong></article>
+            <p>{{ localizeStatusText(activeReport.executiveSummary) }}</p>
           </div>
 
           <el-alert
             v-if="activeReport.reportStatus === 'FAILED_PIPELINE'"
             title="本日报来自失败流水线，只展示已固化数据，不代表完整收盘决策。"
             type="error"
+            show-icon
+            :closable="false"
+            class="failed-report-alert"
+          />
+
+          <el-alert
+            v-else-if="!activeReport.content?.insightSummary?.snapshotId"
+            title="这是字段升级前生成的旧版日报，未固化系统评分、AI 决策和风险等级。请从右上角“更多”按当前交易日重建。"
+            type="warning"
             show-icon
             :closable="false"
             class="failed-report-alert"
@@ -118,9 +138,9 @@
             class="failed-report-alert"
           />
 
-          <ReportStockSection title="推荐关注" :items="activeReport.content?.recommendations || []" tone="recommend" @open="openReportItem" />
-          <ReportStockSection title="谨慎观察" :items="activeReport.content?.watches || []" tone="watch" @open="openReportItem" />
-          <ReportStockSection title="建议回避" :items="activeReport.content?.avoids || []" tone="avoid" @open="openReportItem" />
+          <ReportStockSection title="推荐关注" :items="activeReport.content?.recommendations || []" tone="recommend" @open="openReportItem" @open-sample="openSampleItem" />
+          <ReportStockSection title="谨慎观察" :items="activeReport.content?.watches || []" tone="watch" @open="openReportItem" @open-sample="openSampleItem" />
+          <ReportStockSection title="建议回避" :items="activeReport.content?.avoids || []" tone="avoid" @open="openReportItem" @open-sample="openSampleItem" />
           <ReportStockSection title="持仓风险" :items="activeReport.content?.holdingRisks || []" tone="risk" @open="openPortfolio" />
         </div>
         <el-empty v-else description="暂无投研日报" />
@@ -144,11 +164,11 @@
           >
             <div>
               <strong>{{ report.tradeDate }}</strong>
-              <span>{{ report.title }}</span>
+              <span>{{ localizeStatusText(report.title) }}</span>
             </div>
             <div class="history-meta">
               <em>V{{ report.reportVersion }}</em>
-              <i :class="statusClass(report.reportStatus)">{{ report.reportStatus }}</i>
+              <i :class="statusClass(report.reportStatus)">{{ statusLabel(report.reportStatus, '待确认') }}</i>
             </div>
           </button>
           <el-empty v-if="!loading && !reports.length" description="暂无历史日报" />
@@ -180,44 +200,49 @@
       <section class="surface">
         <div class="surface-header">
           <div>
-            <h2 class="surface-title">策略与流水线</h2>
-            <p class="surface-subtitle">确认今日日报来源、可信度与失败位置</p>
+            <h2 class="surface-title">数据与自动化</h2>
+            <p class="surface-subtitle">核对日报来源、策略版本、流水线状态和数据边界</p>
           </div>
         </div>
-        <div class="surface-body detail-stack">
-          <div class="detail-card">
-            <span>策略版本</span>
-            <strong>{{ activeReport.content?.strategyPerformance?.versionNo || 'UNKNOWN' }}</strong>
-            <em>{{ activeReport.content?.strategyPerformance?.title || '未绑定策略' }}</em>
-          </div>
-          <div class="detail-card">
-            <span>总收益 / Alpha</span>
-            <strong>{{ formatDecimalRatio(activeReport.content?.strategyPerformance?.totalReturn) }} / {{ formatDecimalRatio(activeReport.content?.strategyPerformance?.alpha) }}</strong>
-            <em>最大回撤 {{ formatDecimalRatio(activeReport.content?.strategyPerformance?.maxDrawdown) }}</em>
-          </div>
-          <div class="detail-card">
-            <span>流水线步骤</span>
-            <strong>{{ activeReport.content?.pipeline?.status || 'UNKNOWN' }}</strong>
-            <em>{{ activeReport.content?.pipeline?.failedStep || '无失败步骤' }}</em>
-          </div>
-          <div class="pipeline-steps">
-            <div v-for="step in activeReport.content?.pipeline?.steps || []" :key="step.stepKey" class="pipeline-step">
-              <strong>{{ step.stepKey }}</strong>
-              <span>{{ step.status }}</span>
-              <em>{{ step.errorMessage || `输入 ${step.inputCount || 0} / 输出 ${step.outputCount || 0}` }}</em>
+        <details class="surface-body automation-disclosure">
+          <summary>查看策略、数据时间与流水线步骤</summary>
+          <div class="detail-stack automation-detail">
+            <div class="detail-card">
+              <span>策略版本</span>
+              <strong>{{ activeReport.content?.strategyPerformance?.versionNo || '未绑定' }}</strong>
+              <em>{{ activeReport.content?.strategyPerformance?.title || '未绑定策略' }}</em>
+            </div>
+            <div class="detail-card">
+              <span>总收益 / Alpha</span>
+              <strong>{{ formatDecimalRatio(activeReport.content?.strategyPerformance?.totalReturn) }} / {{ formatDecimalRatio(activeReport.content?.strategyPerformance?.alpha) }}</strong>
+              <em>最大回撤 {{ formatDecimalRatio(activeReport.content?.strategyPerformance?.maxDrawdown) }}</em>
+            </div>
+            <div class="detail-card">
+              <span>流水线步骤</span>
+              <strong>{{ statusLabel(activeReport.content?.pipeline?.status, '待确认') }}</strong>
+              <em>{{ statusLabel(activeReport.content?.pipeline?.failedStep, '无失败步骤') }}</em>
+            </div>
+            <div class="pipeline-steps">
+              <div v-for="step in activeReport.content?.pipeline?.steps || []" :key="step.stepKey" class="pipeline-step">
+                <strong>{{ statusLabel(step.stepKey) }}</strong>
+                <span>{{ statusLabel(step.status, '待确认') }}</span>
+                <em>{{ step.errorMessage || `输入 ${step.inputCount || 0} / 输出 ${step.outputCount || 0}` }}</em>
+              </div>
             </div>
           </div>
-        </div>
+        </details>
       </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import { h, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElButton, ElEmpty, ElMessage } from 'element-plus'
-import { MagicStick, Refresh } from '@element-plus/icons-vue'
+import { ElButton, ElEmpty, ElMessage, ElMessageBox } from 'element-plus'
+import { MoreFilled, Refresh } from '@element-plus/icons-vue'
+import ReportStockSection from '../components/ResearchReportStockSection.vue'
+import { localizeStatusText, statusLabel } from '../utils/statusLabels'
 import {
   fetchLatestResearchDailyReport,
   fetchResearchDailyReportDetail,
@@ -231,37 +256,6 @@ const rebuilding = ref(false)
 const reports = ref([])
 const activeReport = ref(null)
 const errorMessage = ref('')
-
-const ReportStockSection = {
-  props: {
-    title: { type: String, required: true },
-    items: { type: Array, default: () => [] },
-    tone: { type: String, default: 'watch' },
-  },
-  emits: ['open'],
-  setup(props, { emit }) {
-    return () => h('div', { class: 'report-section' }, [
-      h('div', { class: 'section-head' }, [
-        h('h3', props.title),
-        h('span', `${props.items.length} 只`),
-      ]),
-      props.items.length
-        ? h('div', { class: 'stock-card-grid' }, props.items.map((item) => h('article', { class: ['stock-card', props.tone] }, [
-            h('div', { class: 'stock-head' }, [
-              h('div', [h('strong', item.stockName), h('span', item.stockCode)]),
-              h('b', formatFactorScore(item.compositeScore)),
-            ]),
-            h('div', { class: 'stock-meta' }, [
-              h('span', `风险 ${formatFactorScore(item.riskScore)}`),
-              h('span', `命中率 ${formatRatio(item.historicalHitRate)}`),
-            ]),
-            h('p', { class: 'stock-reason' }, item.reasonSummary || '暂无说明'),
-            h(ElButton, { text: true, type: 'primary', onClick: () => emit('open', item) }, () => '查看关联页面'),
-          ])))
-        : h(ElEmpty, { description: '暂无数据' }),
-    ])
-  },
-}
 
 async function loadReports() {
   loading.value = true
@@ -298,7 +292,7 @@ async function loadDetail(reportId) {
 async function rebuildReport() {
   rebuilding.value = true
   try {
-    activeReport.value = await rebuildResearchDailyReport()
+    activeReport.value = await rebuildResearchDailyReport(activeReport.value?.tradeDate)
     reports.value = await fetchResearchDailyReports(20)
     ElMessage.success('投研日报已重建')
   } catch (error) {
@@ -308,11 +302,43 @@ async function rebuildReport() {
   }
 }
 
+async function handleHeaderCommand(command) {
+  if (command === 'automation') {
+    openAutomation()
+    return
+  }
+  if (command !== 'rebuild') return
+  try {
+    await ElMessageBox.confirm(
+      `此操作将使用 ${activeReport.value?.tradeDate || '当前交易日'} 已固化的决策快照生成新版本，不会重新执行整套分析流水线。`,
+      '从当前快照重建日报',
+      {
+        confirmButtonText: '确认重建',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch {
+    return
+  }
+  await rebuildReport()
+}
+
 function openReportItem(item) {
   router.push({
     path: '/reports',
     query: {
       reportId: item?.reportId || '',
+      code: item?.stockCode || '',
+    },
+  })
+}
+
+function openSampleItem(item) {
+  router.push({
+    path: '/ai-samples',
+    query: {
+      sampleId: item?.sampleId || '',
       code: item?.stockCode || '',
     },
   })
@@ -330,9 +356,9 @@ function formatDateTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
 }
 
-function formatRatio(value) {
-  const number = Number(value || 0)
-  return `${number.toFixed(2)}%`
+function formatPercent(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  return `${Number(value).toFixed(1)}%`
 }
 
 function formatDecimalRatio(value) {
@@ -384,7 +410,7 @@ onMounted(loadReports)
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin: 4px 0 18px;
   overflow: hidden;
   border: 1px solid #e5e7eb;
@@ -402,8 +428,7 @@ onMounted(loadReports)
   border-right: 0;
 }
 
-.metric-item span,
-.pill-card span {
+.metric-item span {
   display: block;
   color: #64748b;
   font-size: 13px;
@@ -422,10 +447,12 @@ onMounted(loadReports)
 .metric-item.watch strong { color: #b45309; }
 .metric-item.avoid strong { color: #15803d; }
 .metric-item.risk strong { color: #be123c; }
+.metric-item.hit-rate strong { color: #1d4ed8; }
+.metric-item.quality strong { color: #047857; }
 
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   overflow: hidden;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
@@ -488,124 +515,21 @@ onMounted(loadReports)
   text-wrap: pretty;
 }
 
-.pill-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 18px;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-}
-
-.pill-card {
-  display: grid;
-  gap: 8px;
-  padding: 14px 16px;
-  border-right: 1px solid #e5e7eb;
-}
-
-.pill-card:last-child {
-  border-right: 0;
-}
-
-.pill-card strong {
-  color: #111827;
-  font-size: 24px;
-  line-height: 30px;
-}
-
-.pill-card.recommend { background: #fef2f2; }
-.pill-card.watch { background: #fffbeb; }
-.pill-card.avoid { background: #f0fdf4; }
-.pill-card.risk { background: #fff1f2; }
-.pill-card.recommend strong { color: #b91c1c; }
-.pill-card.watch strong { color: #a16207; }
-.pill-card.avoid strong { color: #166534; }
-.pill-card.risk strong { color: #be123c; }
-
-.report-section {
-  margin-top: 24px;
-}
-
-.section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.section-head h3 {
-  margin: 0;
-  color: #111827;
-  font-size: 16px;
-  line-height: 24px;
-}
-
-.section-head span {
-  color: #64748b;
-  font-size: 13px;
-}
-
-.stock-card-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.stock-card {
-  min-width: 0;
-  padding: 15px 16px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #ffffff;
-}
-
-.stock-card.recommend { border-color: #fecaca; }
-.stock-card.watch { border-color: #fde68a; }
-.stock-card.avoid { border-color: #bbf7d0; }
-.stock-card.risk { border-color: #fecdd3; }
-
-.stock-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.stock-head strong,
 .factor-item strong {
   display: block;
   color: #111827;
   overflow-wrap: anywhere;
 }
 
-.stock-head span,
 .factor-item span {
   color: #64748b;
   font-size: 12px;
 }
 
-.stock-head b,
 .factor-item b {
   color: #b45309;
   font-size: 20px;
   font-variant-numeric: tabular-nums;
-}
-
-.stock-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 10px;
-  color: #475569;
-  font-size: 12px;
-}
-
-.stock-reason {
-  min-height: 42px;
-  margin: 10px 0 6px;
-  color: #334155;
-  line-height: 1.6;
-  text-wrap: pretty;
 }
 
 .report-history,
@@ -707,33 +631,58 @@ onMounted(loadReports)
   overflow-wrap: anywhere;
 }
 
+.automation-disclosure {
+  padding-top: 14px;
+}
+
+.automation-disclosure summary {
+  color: #1d4ed8;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.automation-disclosure summary:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.automation-detail {
+  margin-top: 16px;
+}
+
 .ok { color: #15803d !important; }
 .warn { color: #b45309 !important; }
 .danger { color: #dc2626 !important; }
 
 @media (max-width: 1440px) {
-  .report-layout,
-  .stock-card-grid {
+  .report-layout {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .metric-grid,
   .status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .metric-item,
   .status-tile {
     border-right: 1px solid #e5e7eb;
     border-bottom: 1px solid #e5e7eb;
   }
 
-  .status-tile:nth-child(2n) {
+  .metric-item:nth-child(3n),
+  .status-tile:nth-child(3n) {
     border-right: 0;
   }
 
-  .status-tile:last-child {
-    grid-column: 1 / -1;
-    border-right: 0;
+  .metric-item:nth-last-child(-n + 3),
+  .status-tile:nth-last-child(-n + 3) {
     border-bottom: 0;
+  }
+
+  .status-tile:last-child {
+    grid-column: auto;
+    border-right: 0;
   }
 }
 
@@ -757,30 +706,36 @@ onMounted(loadReports)
     margin: 0;
   }
 
+  .header-actions :deep(.el-dropdown) {
+    width: 100%;
+  }
+
   .metric-grid,
-  .status-grid,
-  .pill-grid,
-  .stock-card-grid {
+  .status-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .metric-item,
-  .status-tile,
-  .pill-card {
+  .status-tile {
     grid-column: auto;
     border-right: 0;
     border-bottom: 1px solid #e5e7eb;
   }
 
+  .metric-item:nth-last-child(-n + 3),
+  .status-tile:nth-last-child(-n + 3) {
+    border-bottom: 1px solid #e5e7eb;
+  }
+
   .metric-item:last-child,
-  .status-tile:last-child,
-  .pill-card:last-child {
+  .status-tile:last-child {
     border-bottom: 0;
   }
 
   .history-item {
     align-items: flex-start;
   }
+
 }
 
 @media (prefers-reduced-motion: reduce) {

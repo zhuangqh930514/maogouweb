@@ -75,7 +75,9 @@
                 <div class="muted mono">{{ row.factorCode }}</div>
               </template>
             </el-table-column>
-            <el-table-column prop="marketRegime" label="环境" width="100" />
+            <el-table-column prop="marketRegime" label="环境" width="100">
+              <template #default="{ row }">{{ statusLabel(row.marketRegime, '待确认') }}</template>
+            </el-table-column>
             <el-table-column label="样本" width="80" align="right" prop="sampleCount" />
             <el-table-column label="胜率" width="100" align="right">
               <template #default="{ row }">{{ formatPercent(row.successRate) }}</template>
@@ -138,6 +140,7 @@ import {
   runLearningBacktest,
   verifyLearningLabels,
 } from '../services/aiLearning'
+import { statusLabel } from '../utils/statusLabels'
 
 const router = useRouter()
 const dashboard = ref(null)

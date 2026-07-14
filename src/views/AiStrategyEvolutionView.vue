@@ -59,7 +59,7 @@
           <pre>{{ version.factorSnapshot || '等待因子学习数据' }}</pre>
         </div>
         <div class="strategy-section">
-          <label>Prompt 调权建议</label>
+          <label>提示词调权建议</label>
           <pre>{{ version.promptTemplate || '等待生成策略版本' }}</pre>
         </div>
       </section>

@@ -117,7 +117,7 @@
                 />
                 <span class="report-item-content">
                   <strong>{{ report.stock }}</strong>
-                  <em>{{ report.advice }}</em>
+                  <em>{{ localizeStatusText(report.advice, '暂无建议') }}</em>
                 </span>
               </div>
               <span class="report-score" :class="report.score >= 75 ? 'up' : 'muted'">{{ report.score }}</span>
@@ -181,7 +181,7 @@
             <div class="lineage-card">
               <span>数据质量 / 置信度</span>
               <strong>{{ formatLineagePercent(normalizedSelectedReport.dataQualityScore) }} / {{ formatLineagePercent(normalizedSelectedReport.calibratedConfidence) }}</strong>
-              <em>会参与每日投研推荐排序</em>
+              <em>会参与投研日报推荐排序</em>
             </div>
           </div>
           <ConditionalTradeStrategy
@@ -215,6 +215,7 @@ import ConditionalTradeStrategy from '../components/ConditionalTradeStrategy.vue
 import { analyzeStock, analyzeWatchlist, deleteAiReports, fetchAiReportPage, fetchAiReports } from '../services/ai'
 import { fetchModelConfig, fetchPromptTemplates } from '../services/settings'
 import { searchStocks } from '../services/stocks'
+import { localizeStatusText, statusLabel } from '../utils/statusLabels'
 
 const reportFilterOptions = [
   { label: '全部报告', value: 'ALL' },
@@ -655,7 +656,7 @@ function formatBuySellPoints(payload) {
   }
   const lines = []
   if (source.action) {
-    lines.push(`当前建议：${source.action}。`)
+    lines.push(`当前建议：${statusLabel(source.action)}。`)
   }
   if (source.buyTriggers?.length) {
     lines.push(`关注买点：${source.buyTriggers.join('；')}。`)

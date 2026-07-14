@@ -47,7 +47,9 @@
               <el-tag effect="plain">{{ groupText(row.factorGroup) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="marketRegime" label="验证环境" min-width="120" />
+          <el-table-column prop="marketRegime" label="验证环境" min-width="120">
+            <template #default="{ row }">{{ statusLabel(row.marketRegime, '待确认') }}</template>
+          </el-table-column>
           <el-table-column prop="sampleCount" label="样本" width="90" align="right" />
           <el-table-column label="胜率" width="110" align="right">
             <template #default="{ row }">{{ formatPercent(row.successRate) }}</template>
@@ -80,6 +82,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { DataAnalysis, Refresh } from '@element-plus/icons-vue'
 import { fetchAiEvolutionFactors, refreshAiEvolutionFactors } from '../services/aiEvolution'
+import { statusLabel } from '../utils/statusLabels'
 
 const loading = ref(false)
 const refreshing = ref(false)

@@ -12,8 +12,9 @@ export function fetchResearchDailyReportDetail(reportId) {
   return request(`/api/ai/research-daily-reports/${reportId}`)
 }
 
-export function rebuildResearchDailyReport() {
-  return request('/api/ai/research-daily-reports/rebuild', {
+export function rebuildResearchDailyReport(tradeDate) {
+  const query = tradeDate ? `?tradeDate=${encodeURIComponent(tradeDate)}` : ''
+  return request(`/api/ai/research-daily-reports/rebuild${query}`, {
     method: 'POST',
   })
 }

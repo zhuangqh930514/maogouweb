@@ -44,7 +44,7 @@
           <div class="status-tile">
             <span>周度策略验证</span>
             <strong>{{ schedulerStatus?.nextWeeklyEvolutionTime || '-' }}</strong>
-            <em>自动执行 Walk-forward、组合回测和 Challenger 影子评估</em>
+            <em>自动执行滚动窗口验证、组合回测和候选策略影子评估</em>
           </div>
           <div class="status-tile">
             <span>月度模型训练</span>
@@ -62,7 +62,7 @@
             <em>{{ metricHelper('样本外胜率', '等待复盘验证') }}</em>
           </div>
           <div class="status-tile">
-            <span>每日投研结果</span>
+            <span>日报决策快照</span>
             <strong :class="dailyInsightStatusClass">{{ dailyInsightStatusText }}</strong>
             <em>{{ dailyInsightHelper }}</em>
           </div>
@@ -174,7 +174,7 @@
     <section v-if="advancedVisible" class="surface">
       <div class="surface-header">
         <div>
-          <h2 class="surface-title">旧版研究参数（LEGACY）</h2>
+          <h2 class="surface-title">旧版研究参数</h2>
           <p class="surface-subtitle">仅供专家手动任务兼容使用，不控制 V2 每日 16:00 自动流水线</p>
         </div>
       </div>
@@ -271,6 +271,7 @@ import {
 } from '@element-plus/icons-vue'
 import { analyzeWatchlist } from '../services/ai'
 import { fetchDailyInsightToday } from '../services/dailyInsight'
+import { localizeStatusText, statusLabel } from '../utils/statusLabels'
 import { evolveAiStrategy, refreshAiEvolutionFactors, verifyAiEvolutionReviews } from '../services/aiEvolution'
 import {
   buildWatchlistSamples,
@@ -354,7 +355,7 @@ const pipelineDefinitions = {
       '计算因子',
       '生成 V2 预测',
       '生成个股报告',
-      '汇总每日投研',
+      '汇总日报结论',
       '生成投研日报',
     ],
   },
@@ -379,7 +380,7 @@ const taskDefinitions = [
     title: '固化学习样本',
     description: '把自选股在当前时点的行情、K线和因子快照保存为可复盘样本。',
     cadence: '收盘后优先',
-    input: '输入：WATCHLIST',
+    input: '输入：自选股',
     output: '产出：训练样本',
     tone: 'cyan',
     icon: markRaw(Collection),
@@ -579,10 +580,10 @@ const dailyInsightStatusClass = computed(() => {
 
 const dailyInsightHelper = computed(() => {
   if (!dailyInsight.value) {
-    return '正在读取每日投研快照'
+    return '正在读取日报决策快照'
   }
   if (!dailyInsight.value.summary?.snapshotId) {
-    return dailyInsight.value.message || '流水线完成后应生成每日投研结果'
+    return dailyInsight.value.message || '流水线完成后应生成日报决策快照'
   }
   const summary = dailyInsight.value.summary || {}
   if (Number(summary.itemCount || 0) === 0) {
@@ -596,7 +597,7 @@ const researchDailyReportStatusText = computed(() => {
   if (!report) {
     return '未生成'
   }
-  return report.reportStatus || 'UNKNOWN'
+  return statusLabel(report.reportStatus, '待确认')
 })
 
 const researchDailyReportStatusClass = computed(() => {
@@ -626,7 +627,7 @@ const displayLogs = computed(() => [
     id: `backend-${item.id}`,
     title: item.jobName || item.jobType || '后端任务',
     status: normalizeLogStatus(item.status),
-    message: `${item.status || '-'} · 成功 ${item.successCount || 0} / 处理 ${item.processedCount || 0}${item.errorMessage ? ` · ${item.errorMessage}` : ''}`,
+    message: `${statusLabel(item.status)} · 成功 ${item.successCount || 0} / 处理 ${item.processedCount || 0}${item.errorMessage ? ` · ${localizeStatusText(item.errorMessage)}` : ''}`,
     time: formatDateTime(item.startedAt),
   })),
   ...logs.value,
@@ -717,7 +718,7 @@ async function loadTaskConfig() {
         return null
       }),
       fetchDailyInsightToday().catch((error) => {
-        console.warn('[猫狗智投] 每日投研结果读取失败', error)
+        console.warn('[猫狗智投] 日报决策快照读取失败', error)
         return null
       }),
       fetchSchedulerJobLogs(20).catch((error) => {
@@ -825,8 +826,8 @@ async function runPipeline(type) {
         throw new Error(schedulerStatus.value?.autoClosePipelineLastMessage || '每日收盘投研流水线执行失败')
       }
       addLog(pipeline.title, status === 'PARTIAL_SUCCESS' ? 'warn' : 'success',
-        schedulerStatus.value?.autoClosePipelineLastMessage || '每日投研与投研日报已生成')
-      ElMessage.success('今日投研与日报已生成')
+        schedulerStatus.value?.autoClosePipelineLastMessage || '日报决策快照与投研日报已生成')
+      ElMessage.success('今日投研日报已生成')
       return
     }
     for (const key of pipeline.tasks) {
@@ -885,7 +886,7 @@ async function refreshDailyInsightState() {
     dailyInsight.value = await fetchDailyInsightToday()
     backendJobLogs.value = await fetchSchedulerJobLogs(20)
   } catch (error) {
-    console.warn('[猫狗智投] 每日投研状态刷新失败', error)
+    console.warn('[猫狗智投] 日报决策快照状态刷新失败', error)
   }
 }
 
