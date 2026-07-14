@@ -5,6 +5,17 @@ export function fetchAiReports(code) {
   return request(`/api/ai/reports${query}`)
 }
 
+export function fetchAiReportPage({ page = 1, pageSize = 10, date, filter = 'ALL', code } = {}) {
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  })
+  if (date) query.set('date', date)
+  if (filter) query.set('filter', filter)
+  if (code) query.set('code', code)
+  return request(`/api/ai/reports/page?${query.toString()}`)
+}
+
 export function analyzeWatchlist(promptTemplateId) {
   return request('/api/ai/analyze-watchlist', {
     method: 'POST',

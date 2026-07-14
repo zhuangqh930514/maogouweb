@@ -2,7 +2,7 @@
   <div class="page">
     <section class="surface toolbar-surface">
       <div class="surface-body reports-toolbar">
-        <el-segmented v-model="filter" :options="['全部报告', '今日生成', '高风险', '建议买入', '建议减仓']" />
+        <el-segmented v-model="filter" :options="reportFilterOptions" @change="handleReportFilterChange" />
         <div class="reports-toolbar-actions">
           <el-autocomplete
             v-model="stockKeyword"
@@ -53,6 +53,34 @@
           striped-flow
         />
       </div>
+      <div class="report-query-bar">
+        <div class="report-date-controls">
+          <span class="report-query-label">报告日期</span>
+          <el-segmented
+            v-model="dateShortcut"
+            :options="dateShortcutOptions"
+            @change="handleDateShortcutChange"
+          />
+          <el-date-picker
+            v-model="reportDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            format="YYYY-MM-DD"
+            placeholder="选择报告日期"
+            clearable
+            :disabled-date="disableFutureDate"
+            class="report-date-picker"
+            @change="handleReportDateChange"
+          />
+        </div>
+        <div class="report-query-summary">
+          <el-tag v-if="reportDate && reportDate === latestAvailableDate" type="success" effect="plain">
+            最新有数据
+          </el-tag>
+          <strong>{{ reportDate || '暂无数据日期' }}</strong>
+          <span>共 {{ reportTotal }} 份报告</span>
+        </div>
+      </div>
     </section>
 
     <div class="section-grid reports-layout">
@@ -60,7 +88,7 @@
         <div class="surface-header">
           <div>
             <h2 class="surface-title">报告列表</h2>
-            <p class="surface-subtitle">按生成时间倒序展示</p>
+            <p class="surface-subtitle">{{ reportDate || '-' }} · 按生成时间倒序</p>
           </div>
           <el-button
             type="danger"
@@ -72,32 +100,49 @@
             批量删除
           </el-button>
         </div>
-        <div v-loading="loading" class="surface-body report-list">
-          <button
-            v-for="report in filteredReports"
-            :key="report.id"
-            class="report-item"
-            :class="{ active: selected?.id === report.id }"
-            @click="selected = report"
-          >
-            <div class="report-item-main">
-              <el-checkbox
-                :model-value="selectedIds.includes(report.id)"
-                @click.stop
-                @change="toggleReportSelection(report.id, $event)"
-              />
-              <span class="report-item-content">
-                <strong>{{ report.stock }}</strong>
-                <em>{{ report.advice }}</em>
-              </span>
-            </div>
-            <span class="report-score" :class="report.score >= 75 ? 'up' : 'muted'">{{ report.score }}</span>
-            <small class="report-meta">
-              <span>{{ formatDateTime(report.generatedAt) }}</span>
-              <span>来源：{{ report.sourceModel || '未记录' }}</span>
-            </small>
-          </button>
-          <el-empty v-if="!filteredReports.length" description="暂无 AI 分析报告" />
+        <div v-loading="loading" class="surface-body report-list-shell">
+          <div class="report-list">
+            <button
+              v-for="report in aiReports"
+              :key="report.id"
+              class="report-item"
+              :class="{ active: selected?.id === report.id }"
+              @click="selected = report"
+            >
+              <div class="report-item-main">
+                <el-checkbox
+                  :model-value="selectedIds.includes(report.id)"
+                  @click.stop
+                  @change="toggleReportSelection(report.id, $event)"
+                />
+                <span class="report-item-content">
+                  <strong>{{ report.stock }}</strong>
+                  <em>{{ report.advice }}</em>
+                </span>
+              </div>
+              <span class="report-score" :class="report.score >= 75 ? 'up' : 'muted'">{{ report.score }}</span>
+              <small class="report-meta">
+                <span>{{ formatDateTime(report.generatedAt) }}</span>
+                <span>来源：{{ report.sourceModel || '未记录' }}</span>
+              </small>
+            </button>
+            <el-empty
+              v-if="!aiReports.length"
+              :description="reportDate ? `${reportDate} 暂无 AI 分析报告` : '暂无 AI 分析报告'"
+            />
+          </div>
+          <div v-if="reportTotal" class="report-list-footer">
+            <span>第 {{ reportPage }} / {{ reportTotalPages }} 页</span>
+            <el-pagination
+              :current-page="reportPage"
+              :page-size="reportPageSize"
+              :total="reportTotal"
+              :pager-count="5"
+              background
+              layout="prev, pager, next"
+              @current-change="handleReportPageChange"
+            />
+          </div>
         </div>
       </section>
 
@@ -161,11 +206,30 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Cpu, Refresh } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
-import { analyzeStock, analyzeWatchlist, deleteAiReports, fetchAiReports } from '../services/ai'
+import { analyzeStock, analyzeWatchlist, deleteAiReports, fetchAiReportPage, fetchAiReports } from '../services/ai'
 import { fetchModelConfig, fetchPromptTemplates } from '../services/settings'
 import { searchStocks } from '../services/stocks'
 
-const filter = ref('全部报告')
+const reportFilterOptions = [
+  { label: '全部报告', value: 'ALL' },
+  { label: '高风险', value: 'HIGH_RISK' },
+  { label: '建议买入', value: 'BUY' },
+  { label: '建议减仓', value: 'REDUCE' },
+]
+const dateShortcutOptions = [
+  { label: '最新', value: 'LATEST' },
+  { label: '今日', value: 'TODAY' },
+  { label: '昨日', value: 'YESTERDAY' },
+  { label: '前日', value: 'BEFORE_YESTERDAY' },
+]
+const filter = ref('ALL')
+const dateShortcut = ref('LATEST')
+const reportDate = ref('')
+const latestAvailableDate = ref('')
+const reportPage = ref(1)
+const reportPageSize = ref(10)
+const reportTotal = ref(0)
+const reportTotalPages = ref(0)
 const route = useRoute()
 const loading = ref(false)
 const analyzing = ref(false)
@@ -190,23 +254,6 @@ const analysisProgress = reactive({
 })
 let analysisProgressTimer = null
 
-const filteredReports = computed(() => {
-  if (filter.value === '今日生成') {
-    const today = new Date().toISOString().slice(0, 10)
-    return aiReports.value.filter((item) => item.generatedAt?.startsWith(today))
-  }
-  if (filter.value === '高风险') {
-    return aiReports.value.filter((item) => Number(item.score || 0) < 60)
-  }
-  if (filter.value === '建议买入') {
-    return aiReports.value.filter((item) => /买入|突破|持有/.test(item.advice || ''))
-  }
-  if (filter.value === '建议减仓') {
-    return aiReports.value.filter((item) => /减仓|控制|风险/.test(item.advice || ''))
-  }
-  return aiReports.value
-})
-
 const normalizedSelectedReport = computed(() => {
   if (!selected.value) {
     return null
@@ -220,22 +267,32 @@ const normalizedSelectedReport = computed(() => {
   }
 })
 
-async function loadReports(code) {
+async function loadReports({ preferredReportId = null } = {}) {
   loading.value = true
   try {
-    aiReports.value = await fetchAiReports(code)
-    const validIds = new Set(aiReports.value.map((item) => item.id))
-    selectedIds.value = selectedIds.value.filter((id) => validIds.has(id))
-    const routeReportId = Number(route.query.reportId || 0)
-    const routeCode = typeof route.query.code === 'string' ? route.query.code : ''
-    selected.value = selected.value
-      ? aiReports.value.find((item) => item.id === selected.value.id) || aiReports.value[0] || null
-      : aiReports.value[0] || null
-    if (routeReportId) {
-      selected.value = aiReports.value.find((item) => item.id === routeReportId) || selected.value
-    } else if (routeCode) {
-      selected.value = aiReports.value.find((item) => item.code === routeCode) || selected.value
+    const result = await fetchAiReportPage({
+      page: reportPage.value,
+      pageSize: reportPageSize.value,
+      date: reportDate.value || undefined,
+      filter: filter.value,
+    })
+    aiReports.value = result?.items || []
+    reportTotal.value = Number(result?.total || 0)
+    reportPage.value = Number(result?.page || 1)
+    reportPageSize.value = Number(result?.pageSize || reportPageSize.value)
+    reportTotalPages.value = Number(result?.totalPages || 0)
+    if (result?.selectedDate) {
+      reportDate.value = result.selectedDate
     }
+    if (result?.latestAvailableDate) {
+      latestAvailableDate.value = result.latestAvailableDate
+    }
+    const preferredId = Number(preferredReportId || 0)
+    const currentId = Number(selected.value?.id || 0)
+    selected.value = aiReports.value.find((item) => item.id === preferredId)
+      || aiReports.value.find((item) => item.id === currentId)
+      || aiReports.value[0]
+      || null
   } catch (error) {
     ElMessage.error(error.message || 'AI 报告获取失败')
   } finally {
@@ -243,19 +300,105 @@ async function loadReports(code) {
   }
 }
 
-function upsertReport(report) {
-  if (!report?.id) {
-    return
-  }
-  aiReports.value = [report, ...aiReports.value.filter((item) => item.id !== report.id)]
-  selected.value = report
-  selectedIds.value = selectedIds.value.filter((id) => id !== report.id)
+async function handleReportFilterChange() {
+  reportPage.value = 1
+  selectedIds.value = []
+  await loadReports()
 }
 
-async function refreshReportsAfterAnalysis(report, code) {
-  filter.value = '全部报告'
-  upsertReport(report)
-  await loadReports(code)
+async function handleDateShortcutChange(shortcut) {
+  reportPage.value = 1
+  selectedIds.value = []
+  reportDate.value = shortcut === 'LATEST'
+    ? ''
+    : localDateKeyWithOffset(shortcut === 'TODAY' ? 0 : shortcut === 'YESTERDAY' ? -1 : -2)
+  await loadReports()
+}
+
+async function handleReportDateChange(value) {
+  reportDate.value = value || ''
+  dateShortcut.value = value ? shortcutForDate(value) : 'LATEST'
+  reportPage.value = 1
+  selectedIds.value = []
+  await loadReports()
+}
+
+async function handleReportPageChange(page) {
+  reportPage.value = page
+  selectedIds.value = []
+  await loadReports()
+}
+
+function disableFutureDate(value) {
+  return localDateKey(value) > localDateKey(new Date())
+}
+
+function localDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function localDateKeyWithOffset(days) {
+  const date = new Date()
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() + days)
+  return localDateKey(date)
+}
+
+function shortcutForDate(value) {
+  if (value === localDateKeyWithOffset(0)) return 'TODAY'
+  if (value === localDateKeyWithOffset(-1)) return 'YESTERDAY'
+  if (value === localDateKeyWithOffset(-2)) return 'BEFORE_YESTERDAY'
+  return 'CUSTOM'
+}
+
+async function syncRouteSelection() {
+  const routeReportId = Number(route.query.reportId || 0)
+  const routeCode = typeof route.query.code === 'string' ? route.query.code : ''
+  const currentPageMatch = routeReportId
+    ? aiReports.value.find((item) => item.id === routeReportId)
+    : aiReports.value.find((item) => item.code === routeCode)
+  if (currentPageMatch) {
+    selected.value = currentPageMatch
+    return
+  }
+  if (!routeCode) {
+    return
+  }
+  try {
+    const reports = await fetchAiReports(routeCode)
+    const target = routeReportId
+      ? reports.find((item) => item.id === routeReportId)
+      : reports[0]
+    if (!target) {
+      return
+    }
+    const targetDate = buildReportDateKey(target.generatedAt)
+    if (targetDate && targetDate !== reportDate.value) {
+      reportDate.value = targetDate
+      dateShortcut.value = shortcutForDate(targetDate)
+      reportPage.value = 1
+      await loadReports({ preferredReportId: target.id })
+    }
+    selected.value = aiReports.value.find((item) => item.id === target.id) || target
+  } catch (error) {
+    ElMessage.error(error.message || '关联报告加载失败')
+  }
+}
+
+async function refreshReportsAfterAnalysis(report) {
+  filter.value = 'ALL'
+  reportDate.value = buildReportDateKey(report?.generatedAt) || localDateKey(new Date())
+  dateShortcut.value = shortcutForDate(reportDate.value)
+  reportPage.value = 1
+  selectedIds.value = []
+  await loadReports({ preferredReportId: report?.id })
   selected.value = aiReports.value.find((item) => item.id === report.id) || report || aiReports.value[0] || null
 }
 
@@ -757,7 +900,7 @@ async function runSingleStockAnalysis() {
   try {
     const report = await analyzeStock(code, true, selectedPromptTemplateId.value, targetReportId)
     selectedSuggestion.value = null
-    await refreshReportsAfterAnalysis(report, code)
+    await refreshReportsAfterAnalysis(report)
     if (isFailedReport(report)) {
       const message = reportFailureMessage(report, `${report.stock || code} 的 AI 分析失败，已刷新失败报告`)
       logAnalysisError('个股分析返回失败报告', new Error(message), { code, reportId: report.id, promptTemplateId: selectedPromptTemplateId.value, targetReportId })
@@ -781,6 +924,11 @@ async function runWatchlistAnalysis() {
   beginAnalysisProgress('正在分析自选股')
   try {
     await analyzeWatchlist(selectedPromptTemplateId.value)
+    filter.value = 'ALL'
+    reportDate.value = localDateKey(new Date())
+    dateShortcut.value = 'TODAY'
+    reportPage.value = 1
+    selectedIds.value = []
     await loadReports()
     completeAnalysisProgress('已完成自选股分析，并刷新报告列表')
     ElMessage.success('已触发自选股分析')
@@ -816,7 +964,7 @@ async function regenerateSelectedReport() {
   beginAnalysisProgress(`正在重新生成 ${code}`)
   try {
     const report = await analyzeStock(code, true, selectedPromptTemplateId.value, currentReport.id)
-    await refreshReportsAfterAnalysis(report, code)
+    await refreshReportsAfterAnalysis(report)
     if (isFailedReport(report)) {
       const message = reportFailureMessage(report, `${report.stock || code} 的 AI 分析失败，已刷新失败报告`)
       logAnalysisError('重新生成返回失败报告', new Error(message), { code, reportId: report.id, promptTemplateId: selectedPromptTemplateId.value })
@@ -835,27 +983,22 @@ async function regenerateSelectedReport() {
   }
 }
 
-onMounted(() => {
-  loadReports()
-  loadPromptTemplates()
-  loadCurrentModelConfig()
+onMounted(async () => {
+  await Promise.all([
+    loadReports(),
+    loadPromptTemplates(),
+    loadCurrentModelConfig(),
+  ])
+  await syncRouteSelection()
 })
 
 watch(
   () => [route.query.reportId, route.query.code],
-  () => {
+  async () => {
     if (!aiReports.value.length) {
       return
     }
-    const routeReportId = Number(route.query.reportId || 0)
-    const routeCode = typeof route.query.code === 'string' ? route.query.code : ''
-    if (routeReportId) {
-      selected.value = aiReports.value.find((item) => item.id === routeReportId) || selected.value
-      return
-    }
-    if (routeCode) {
-      selected.value = aiReports.value.find((item) => item.code === routeCode) || selected.value
-    }
+    await syncRouteSelection()
   },
 )
 
@@ -908,6 +1051,45 @@ onUnmounted(() => {
   text-align: right;
 }
 
+.report-query-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 30px;
+  border-top: 1px solid #e5e7eb;
+  background: #f8fafc;
+}
+
+.report-date-controls,
+.report-query-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.report-query-label {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.report-date-picker {
+  width: 168px;
+}
+
+.report-query-summary {
+  color: #64748b;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.report-query-summary strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
 .reports-stock-search {
   min-width: 300px;
   flex: 1 1 420px;
@@ -943,6 +1125,24 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.report-list-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+}
+
+.report-list-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .report-item {
@@ -1066,6 +1266,10 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1100px) {
+  .reports-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .reports-toolbar-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
@@ -1079,6 +1283,43 @@ onUnmounted(() => {
 
   .lineage-grid {
     grid-template-columns: 1fr;
+  }
+
+  .report-query-bar,
+  .report-date-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .report-query-summary {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .report-date-picker {
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .report-query-summary,
+  .report-list-footer {
+    flex-wrap: wrap;
+  }
+
+  .report-list-shell {
+    min-height: 0;
+  }
+
+  .report-item {
+    grid-template-columns: minmax(0, 1fr) 44px;
+    min-height: 104px;
+    padding: 14px;
+  }
+
+  .report-meta {
+    right: 14px;
+    bottom: 12px;
   }
 }
 </style>
