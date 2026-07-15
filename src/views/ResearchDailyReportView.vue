@@ -336,10 +336,11 @@ function openReportItem(item) {
 
 function openSampleItem(item) {
   router.push({
-    path: '/ai-samples',
+    path: '/research-lab',
     query: {
+      tab: 'samples',
       sampleId: item?.sampleId || '',
-      code: item?.stockCode || '',
+      stockCode: item?.stockCode || '',
     },
   })
 }

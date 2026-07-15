@@ -4,11 +4,13 @@ vi.mock('../../services/auth', () => ({
   isAuthenticated: vi.fn(() => true),
 }))
 
-describe('legacy daily insight route', () => {
-  it('redirects to the merged research daily report page', async () => {
+describe('unified AI research routes', () => {
+  it('removes the retired daily insight route and exposes one research lab route', async () => {
     const { default: router } = await import('../index')
     const legacyRoute = router.getRoutes().find((route) => route.path === '/daily-insight')
+    const labRoute = router.getRoutes().find((route) => route.path === '/research-lab')
 
-    expect(legacyRoute?.redirect).toBe('/research-daily-reports')
+    expect(legacyRoute).toBeUndefined()
+    expect(labRoute?.meta.title).toBe('研究实验室')
   })
 })

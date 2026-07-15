@@ -41,7 +41,7 @@
           </template>
           <el-menu-item index="/research-daily-reports">投研日报</el-menu-item>
           <el-menu-item index="/reports">分析报告</el-menu-item>
-          <el-menu-item index="/ai-learning-evolution">研究实验室</el-menu-item>
+          <el-menu-item index="/research-lab">研究实验室</el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
@@ -130,20 +130,7 @@ let clockTimer = null
 const aiMenuPaths = [
   '/research-daily-reports',
   '/reports',
-  '/ai-learning-evolution',
-  '/ai-factor-hub',
-  '/ai-strategy-validation',
-  '/ai-learning',
-  '/ai-samples',
-  '/ai-factor-factory',
-  '/ai-stock-picker-lab',
-  '/ai-strategy-lab',
-  '/ai-backtests',
-  '/ai-model-evals',
-  '/ai-evolution',
-  '/ai-reviews',
-  '/ai-factors',
-  '/ai-strategies',
+  '/research-lab',
 ]
 const mobileNavigation = [
   { path: '/', label: '资讯首页' },
@@ -152,7 +139,7 @@ const mobileNavigation = [
   { path: '/portfolio', label: '持仓记录' },
   { path: '/research-daily-reports', label: '投研日报' },
   { path: '/reports', label: '分析报告' },
-  { path: '/ai-learning-evolution', label: '研究实验室' },
+  { path: '/research-lab', label: '研究实验室' },
   { path: '/automation-tasks', label: '自动化任务' },
   { path: '/settings', label: '模型配置' },
   { path: '/chat', label: '猫狗畅聊' },

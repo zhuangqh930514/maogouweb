@@ -29,6 +29,10 @@ describe('ShellLayout AI menu', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('投研日报')
+    expect(wrapper.text()).toContain('分析报告')
+    expect(wrapper.text()).toContain('研究实验室')
     expect(wrapper.text()).not.toContain('每日投研')
+    expect(wrapper.text()).not.toContain('因子中心')
+    expect(wrapper.text()).not.toContain('策略验证')
   })
 })

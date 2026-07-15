@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { localizeStatusText, statusLabel } from '../statusLabels'
 
 describe('statusLabels', () => {
@@ -16,8 +16,15 @@ describe('statusLabels', () => {
     expect(text).toBe('数据状态 数据新鲜，市场状态 均衡震荡，流水线 部分成功。')
   })
 
-  it('keeps model names, factor codes and unknown identifiers unchanged', () => {
-    expect(statusLabel('qwen3.6')).toBe('qwen3.6')
+  it('warns and localizes an unknown status instead of exposing its raw enum alone', () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(statusLabel('NEW_PIPELINE_STATE')).toBe('未识别状态（NEW_PIPELINE_STATE）')
+    expect(warning).toHaveBeenCalledWith('发现未配置的状态枚举：NEW_PIPELINE_STATE')
+    warning.mockRestore()
+  })
+
+  it('keeps unknown identifiers embedded in free text unchanged', () => {
     expect(localizeStatusText('MOMENTUM_20D')).toBe('MOMENTUM_20D')
   })
 })
