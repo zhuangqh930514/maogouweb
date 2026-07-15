@@ -138,10 +138,10 @@
             class="failed-report-alert"
           />
 
-          <ReportStockSection title="推荐关注" :items="activeReport.content?.recommendations || []" tone="recommend" @open="openReportItem" @open-sample="openSampleItem" />
-          <ReportStockSection title="谨慎观察" :items="activeReport.content?.watches || []" tone="watch" @open="openReportItem" @open-sample="openSampleItem" />
-          <ReportStockSection title="建议回避" :items="activeReport.content?.avoids || []" tone="avoid" @open="openReportItem" @open-sample="openSampleItem" />
-          <ReportStockSection title="持仓风险" :items="activeReport.content?.holdingRisks || []" tone="risk" @open="openPortfolio" />
+          <ReportStockSection title="推荐关注" :items="activeReport.content?.recommendations || []" :stock-name-map="stockNameMap" tone="recommend" @open="openReportItem" @open-sample="openSampleItem" />
+          <ReportStockSection title="谨慎观察" :items="activeReport.content?.watches || []" :stock-name-map="stockNameMap" tone="watch" @open="openReportItem" @open-sample="openSampleItem" />
+          <ReportStockSection title="建议回避" :items="activeReport.content?.avoids || []" :stock-name-map="stockNameMap" tone="avoid" @open="openReportItem" @open-sample="openSampleItem" />
+          <ReportStockSection title="持仓风险" :items="activeReport.content?.holdingRisks || []" :stock-name-map="stockNameMap" tone="risk" @open="openPortfolio" />
         </div>
         <el-empty v-else description="暂无投研日报" />
       </section>
@@ -249,6 +249,7 @@ import {
   fetchResearchDailyReports,
   rebuildResearchDailyReport,
 } from '../services/researchDailyReport'
+import { fetchWatchlist } from '../services/watchlist'
 
 const router = useRouter()
 const loading = ref(false)
@@ -256,10 +257,12 @@ const rebuilding = ref(false)
 const reports = ref([])
 const activeReport = ref(null)
 const errorMessage = ref('')
+const stockNameMap = ref({})
 
 async function loadReports() {
   loading.value = true
   errorMessage.value = ''
+  void loadStockNames()
   try {
     const [latest, history] = await Promise.all([
       fetchLatestResearchDailyReport(),
@@ -273,6 +276,17 @@ async function loadReports() {
     reports.value = []
   } finally {
     loading.value = false
+  }
+}
+
+async function loadStockNames() {
+  try {
+    const watchlist = await fetchWatchlist()
+    stockNameMap.value = Object.fromEntries((watchlist || [])
+      .filter((item) => item?.code && item?.name)
+      .map((item) => [String(item.code), String(item.name)]))
+  } catch {
+    stockNameMap.value = {}
   }
 }
 

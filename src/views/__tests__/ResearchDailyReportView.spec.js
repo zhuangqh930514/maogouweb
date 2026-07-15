@@ -5,6 +5,7 @@ import {
   fetchLatestResearchDailyReport,
   fetchResearchDailyReports,
 } from '../../services/researchDailyReport'
+import { fetchWatchlist } from '../../services/watchlist'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -15,6 +16,10 @@ vi.mock('../../services/researchDailyReport', () => ({
   fetchResearchDailyReportDetail: vi.fn(),
   fetchResearchDailyReports: vi.fn(),
   rebuildResearchDailyReport: vi.fn(),
+}))
+
+vi.mock('../../services/watchlist', () => ({
+  fetchWatchlist: vi.fn(),
 }))
 
 function report(overrides = {}) {
@@ -100,6 +105,10 @@ async function mountView(latest, history = latest ? [latest] : []) {
 describe('ResearchDailyReportView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    fetchWatchlist.mockResolvedValue([{
+      code: '600519',
+      name: '贵州茅台',
+    }])
   })
 
   it('renders a successful report with its recommendation', async () => {
@@ -108,6 +117,24 @@ describe('ResearchDailyReportView', () => {
     expect(wrapper.text()).toContain('今日结论')
     expect(wrapper.text()).toContain('就绪')
     expect(wrapper.text()).toContain('贵州茅台')
+  })
+
+  it('uses the watchlist name when an archived card stored its stock code as the name', async () => {
+    const archived = report({
+      content: {
+        ...report().content,
+        recommendations: [{
+          ...report().content.recommendations[0],
+          stockName: '600519',
+        }],
+      },
+    })
+
+    const wrapper = await mountView(archived)
+    const stockHead = wrapper.find('.stock-head')
+
+    expect(stockHead.find('strong').text()).toBe('贵州茅台')
+    expect(stockHead.find('span').text()).toBe('600519')
   })
 
   it('renders the true empty state when no report exists', async () => {

@@ -14,7 +14,7 @@
       >
         <div class="stock-head">
           <div>
-            <strong>{{ item.stockName }}</strong>
+            <strong>{{ displayStockName(item) }}</strong>
             <span>{{ item.stockCode }}</span>
           </div>
           <b>{{ formatScore(item.compositeScore) }}</b>
@@ -69,13 +69,27 @@
 import { ElButton, ElEmpty } from 'element-plus'
 import { localizeStatusText, statusLabel } from '../utils/statusLabels'
 
-defineProps({
+const props = defineProps({
   title: { type: String, required: true },
   items: { type: Array, default: () => [] },
   tone: { type: String, default: 'watch' },
+  stockNameMap: { type: Object, default: () => ({}) },
 })
 
 const emit = defineEmits(['open', 'open-sample'])
+
+function displayStockName(item) {
+  const code = String(item?.stockCode || '').trim()
+  const storedName = String(item?.stockName || '').trim()
+  if (isUsableStockName(storedName, code)) return storedName
+  const currentName = String(props.stockNameMap?.[code] || '').trim()
+  return isUsableStockName(currentName, code) ? currentName : code
+}
+
+function isUsableStockName(name, code) {
+  if (!name || name === code || name === '未知股票') return false
+  return !/^\d{6}(?:\.(?:SH|SZ|BJ))?$/i.test(name)
+}
 
 function formatScore(value) {
   return Number(value || 0).toFixed(1)
