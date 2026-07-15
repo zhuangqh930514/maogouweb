@@ -7,6 +7,7 @@ describe('statusLabels', () => {
     expect(statusLabel('WATCH')).toBe('观察')
     expect(statusLabel('HIGH')).toBe('高风险')
     expect(statusLabel('BALANCED')).toBe('均衡震荡')
+    expect(statusLabel('CURRENT_CLOSE')).toBe('当日收盘数据')
     expect(statusLabel('WATCHLIST')).toBe('自选股')
   })
 

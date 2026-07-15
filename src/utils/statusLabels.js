@@ -23,6 +23,7 @@ const STATUS_LABELS = Object.freeze({
   COMPUTE_FACTORS: '计算因子',
   CRITICAL: '严重告警',
   CURRENT: '当前版本',
+  CURRENT_CLOSE: '当日收盘数据',
   DATA_UNAVAILABLE: '数据不可用',
   DECISION: '决策',
   DEFENSIVE: '防御模式',

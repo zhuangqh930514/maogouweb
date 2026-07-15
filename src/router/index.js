@@ -22,6 +22,7 @@ const routes = [
   { path: '/market', name: 'market', component: MarketView, meta: { title: '大盘数据' } },
   { path: '/watchlist', name: 'watchlist', component: WatchlistView, meta: { title: '自选股' } },
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
+  { path: '/research-daily-report', redirect: '/research-daily-reports' },
   { path: '/research-daily-reports', name: 'researchDailyReports', component: ResearchDailyReportView, meta: { title: '投研日报' } },
   { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告' } },
   { path: '/research-lab', name: 'researchLab', component: ResearchLabView, meta: { title: '研究实验室' } },
