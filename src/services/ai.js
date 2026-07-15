@@ -16,6 +16,15 @@ export function fetchAiReportPage({ page = 1, pageSize = 10, date, filter = 'ALL
   return request(`/api/ai/reports/page?${query.toString()}`)
 }
 
+export function fetchAiReport(reportId) {
+  return request(`/api/ai/reports/${encodeURIComponent(reportId)}`)
+}
+
+export function fetchLatestAiReport(code) {
+  const query = code ? `?code=${encodeURIComponent(code)}` : ''
+  return request(`/api/ai/reports/latest${query}`)
+}
+
 export function analyzeWatchlist(promptTemplateId) {
   return request('/api/ai/analyze-watchlist', {
     method: 'POST',

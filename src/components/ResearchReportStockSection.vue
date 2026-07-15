@@ -73,7 +73,6 @@ const props = defineProps({
   title: { type: String, required: true },
   items: { type: Array, default: () => [] },
   tone: { type: String, default: 'watch' },
-  stockNameMap: { type: Object, default: () => ({}) },
 })
 
 const emit = defineEmits(['open', 'open-sample'])
@@ -82,8 +81,7 @@ function displayStockName(item) {
   const code = String(item?.stockCode || '').trim()
   const storedName = String(item?.stockName || '').trim()
   if (isUsableStockName(storedName, code)) return storedName
-  const currentName = String(props.stockNameMap?.[code] || '').trim()
-  return isUsableStockName(currentName, code) ? currentName : code
+  return code
 }
 
 function isUsableStockName(name, code) {

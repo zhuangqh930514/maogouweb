@@ -107,7 +107,7 @@
               :key="report.id"
               class="report-item"
               :class="{ active: selected?.id === report.id }"
-              @click="selected = report"
+              @click="selectReport(report)"
             >
               <div class="report-item-main">
                 <el-checkbox
@@ -146,7 +146,7 @@
         </div>
       </section>
 
-      <section v-if="normalizedSelectedReport" class="surface">
+      <section v-if="normalizedSelectedReport" v-loading="detailLoading" class="surface">
         <div class="surface-header">
           <div>
             <h2 class="surface-title">{{ normalizedSelectedReport.stock }} {{ normalizedSelectedReport.code }} | 结构化分析报告</h2>
@@ -212,7 +212,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Cpu, Refresh } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
 import ConditionalTradeStrategy from '../components/ConditionalTradeStrategy.vue'
-import { analyzeStock, analyzeWatchlist, deleteAiReports, fetchAiReportPage, fetchAiReports } from '../services/ai'
+import { analyzeStock, analyzeWatchlist, deleteAiReports, fetchAiReport, fetchAiReportPage, fetchAiReports } from '../services/ai'
 import { fetchModelConfig, fetchPromptTemplates } from '../services/settings'
 import { searchStocks } from '../services/stocks'
 import { localizeStatusText, statusLabel } from '../utils/statusLabels'
@@ -239,6 +239,7 @@ const reportTotal = ref(0)
 const reportTotalPages = ref(0)
 const route = useRoute()
 const loading = ref(false)
+const detailLoading = ref(false)
 const analyzing = ref(false)
 const stockAnalyzing = ref(false)
 const regenerating = ref(false)
@@ -260,6 +261,7 @@ const analysisProgress = reactive({
   message: '',
 })
 let analysisProgressTimer = null
+let detailRequestToken = 0
 
 const normalizedSelectedReport = computed(() => {
   if (!selected.value) {
@@ -297,14 +299,43 @@ async function loadReports({ preferredReportId = null } = {}) {
     }
     const preferredId = Number(preferredReportId || 0)
     const currentId = Number(selected.value?.id || 0)
-    selected.value = aiReports.value.find((item) => item.id === preferredId)
+    const nextSelection = aiReports.value.find((item) => item.id === preferredId)
       || aiReports.value.find((item) => item.id === currentId)
       || aiReports.value[0]
       || null
+    if (nextSelection) {
+      await selectReport(nextSelection, { silent: true })
+    } else {
+      selected.value = null
+    }
   } catch (error) {
     ElMessage.error(error.message || 'AI 报告获取失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function selectReport(report, { silent = false } = {}) {
+  if (!report?.id) {
+    selected.value = report || null
+    return
+  }
+  const requestToken = ++detailRequestToken
+  selected.value = report
+  detailLoading.value = true
+  try {
+    const detail = await fetchAiReport(report.id)
+    if (requestToken === detailRequestToken) {
+      selected.value = detail || report
+    }
+  } catch (error) {
+    if (!silent) {
+      ElMessage.error(error.message || '报告详情加载失败')
+    }
+  } finally {
+    if (requestToken === detailRequestToken) {
+      detailLoading.value = false
+    }
   }
 }
 
@@ -373,17 +404,15 @@ async function syncRouteSelection() {
     ? aiReports.value.find((item) => item.id === routeReportId)
     : aiReports.value.find((item) => item.code === routeCode)
   if (currentPageMatch) {
-    selected.value = currentPageMatch
-    return
-  }
-  if (!routeCode) {
+    await selectReport(currentPageMatch)
     return
   }
   try {
-    const reports = await fetchAiReports(routeCode)
     const target = routeReportId
-      ? reports.find((item) => item.id === routeReportId)
-      : reports[0]
+      ? await fetchAiReport(routeReportId)
+      : routeCode
+        ? (await fetchAiReports(routeCode))[0]
+        : null
     if (!target) {
       return
     }
@@ -393,8 +422,9 @@ async function syncRouteSelection() {
       dateShortcut.value = shortcutForDate(targetDate)
       reportPage.value = 1
       await loadReports({ preferredReportId: target.id })
+      return
     }
-    selected.value = aiReports.value.find((item) => item.id === target.id) || target
+    await selectReport(aiReports.value.find((item) => item.id === target.id) || target)
   } catch (error) {
     ElMessage.error(error.message || '关联报告加载失败')
   }
@@ -407,7 +437,6 @@ async function refreshReportsAfterAnalysis(report) {
   reportPage.value = 1
   selectedIds.value = []
   await loadReports({ preferredReportId: report?.id })
-  selected.value = aiReports.value.find((item) => item.id === report.id) || report || aiReports.value[0] || null
 }
 
 function beginAnalysisProgress(title) {

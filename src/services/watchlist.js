@@ -5,6 +5,15 @@ export function fetchWatchlist(groupName) {
   return request(`/api/watchlist${query}`)
 }
 
+export function fetchWatchlistPage({ page = 1, pageSize = 50, view = '全部' } = {}) {
+  const query = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+    view,
+  })
+  return request(`/api/watchlist/page?${query.toString()}`)
+}
+
 export function fetchWatchlistCodes(groupName) {
   const query = groupName && groupName !== '全部' ? `?groupName=${encodeURIComponent(groupName)}` : ''
   return request(`/api/watchlist/codes${query}`)

@@ -2,7 +2,7 @@ import { defineComponent } from 'vue'
 import { flushPromises, shallowMount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ReportsView from '../ReportsView.vue'
-import { fetchAiReportPage } from '../../services/ai'
+import { fetchAiReport, fetchAiReportPage } from '../../services/ai'
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {} }),
@@ -12,6 +12,7 @@ vi.mock('../../services/ai', () => ({
   analyzeStock: vi.fn(),
   analyzeWatchlist: vi.fn(),
   deleteAiReports: vi.fn(),
+  fetchAiReport: vi.fn(),
   fetchAiReportPage: vi.fn(),
   fetchAiReports: vi.fn().mockResolvedValue([]),
 }))
@@ -110,6 +111,12 @@ describe('ReportsView pagination and date filters', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fetchAiReportPage.mockResolvedValue(page())
+    fetchAiReport.mockImplementation(async (id) => ({
+      ...report(id),
+      technicalAnalysis: '技术面详情',
+      riskWarning: '风险详情',
+      buySellPoints: '买卖点详情',
+    }))
   })
 
   it('opens on the latest day that actually has report data', async () => {
@@ -124,6 +131,7 @@ describe('ReportsView pagination and date filters', () => {
     expect(wrapper.text()).toContain('2026-07-13')
     expect(wrapper.text()).toContain('最新有数据')
     expect(wrapper.text()).toContain('共 21 份报告')
+    expect(fetchAiReport).toHaveBeenCalledWith(1)
   })
 
   it('uses quick date buttons and resets the report page', async () => {

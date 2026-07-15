@@ -209,9 +209,10 @@ import { ElMessage } from 'element-plus'
 import AiReportBlock from '../components/AiReportBlock.vue'
 import MetricCard from '../components/MetricCard.vue'
 import NewsTicker from '../components/NewsTicker.vue'
-import { fetchAiReports } from '../services/ai'
+import { fetchLatestAiReport } from '../services/ai'
+import { fetchHomeOverview } from '../services/home'
 import { fetchLatestNews, fetchMarketBreadth, fetchMarketIndexes, fetchMarketHotStocks } from '../services/market'
-import { addWatchStock, fetchWatchlistCodes } from '../services/watchlist'
+import { addWatchStock } from '../services/watchlist'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
 const marketLoading = ref(false)
@@ -330,25 +331,49 @@ function barHeight(count) {
   return Math.max(4, Math.round((Number(count || 0) / maxBucketCount.value) * 118))
 }
 
-async function loadHomeExtras() {
-  try {
-    const [stocks, reports] = await Promise.all([fetchMarketHotStocks(10), fetchAiReports()])
+async function loadHomeExtras({ refreshReport = false } = {}) {
+  const [stocksResult, reportResult] = await Promise.allSettled([
+    fetchMarketHotStocks(10),
+    refreshReport ? fetchLatestAiReport() : Promise.resolve(undefined),
+  ])
+  if (stocksResult.status === 'fulfilled') {
+    const stocks = stocksResult.value
     marketHotStocksSource.value = normalizeSourceState(stocks, '市场热度股票数据已更新')
     marketHotStocks.value = (stocks.items || []).map(normalizeHotStock)
-    aiReports.value = reports
-  } catch (error) {
+  } else {
+    const error = stocksResult.reason
     marketHotStocks.value = []
     marketHotStocksSource.value = emptySourceState('UNAVAILABLE', error.message || '市场热度股票获取失败')
-    ElMessage.error(error.message || '首页热度股票/AI 摘要获取失败')
+    ElMessage.error(error.message || '首页热度股票获取失败')
+  }
+  if (refreshReport && reportResult.status === 'fulfilled') {
+    aiReports.value = reportResult.value ? [reportResult.value] : []
   }
 }
 
-async function loadWatchlistCodes() {
+async function loadHomeOverview() {
+  marketLoading.value = true
+  newsLoading.value = true
+  errorMessage.value = ''
   try {
-    const codes = await fetchWatchlistCodes()
-    watchlistCodes.value = new Set(codes)
+    const overview = await fetchHomeOverview()
+    newsItems.value = overview?.news || []
+    marketIndexes.value = (overview?.indexes || []).map(normalizeIndex)
+    marketBreadth.value = normalizeBreadth(overview?.breadth)
+    marketHotStocksSource.value = normalizeSourceState(overview?.hotStocks, '市场热度股票数据已更新')
+    marketHotStocks.value = (overview?.hotStocks?.items || []).map(normalizeHotStock)
+    aiReports.value = overview?.latestAiReport ? [overview.latestAiReport] : []
+    watchlistCodes.value = new Set(overview?.watchlistCodes || [])
+    const warningCount = Object.keys(overview?.warnings || {}).length
+    if (warningCount) {
+      errorMessage.value = `${warningCount} 项首页数据暂时不可用，其他数据已正常展示`
+    }
   } catch (error) {
-    ElMessage.error(error.message || '自选股状态获取失败')
+    errorMessage.value = error.message || '首页数据获取失败'
+    ElMessage.error(errorMessage.value)
+  } finally {
+    marketLoading.value = false
+    newsLoading.value = false
   }
 }
 
@@ -494,10 +519,7 @@ function normalizeNewsUrl(url) {
 }
 
 onMounted(() => {
-  loadNews()
-  loadMarket()
-  loadHomeExtras()
-  loadWatchlistCodes()
+  loadHomeOverview()
   refreshTimer = window.setInterval(() => {
     if (isAshareMarketOpen()) {
       loadMarketIndexes()
@@ -509,7 +531,10 @@ onMounted(() => {
       loadMarketBreadth()
     }
   }, 60000)
-  newsRefreshTimer = window.setInterval(loadNews, 60000)
+  newsRefreshTimer = window.setInterval(() => {
+    loadNews()
+    loadHomeExtras({ refreshReport: true })
+  }, 60000)
 })
 
 onUnmounted(() => {

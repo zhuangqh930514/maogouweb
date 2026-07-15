@@ -41,9 +41,8 @@
         </div>
         <div class="surface-body">
           <el-table
-            ref="watchTableRef"
             v-loading="loading"
-            :data="pagedStocks"
+            :data="watchStocks"
             class="compact-table"
             row-key="code"
             highlight-current-row
@@ -51,11 +50,6 @@
             @selection-change="selectedRows = $event"
           >
             <el-table-column type="selection" width="46" />
-            <el-table-column label="排序" width="70">
-              <template #default>
-                <span class="drag-handle" title="拖拽排序">☰</span>
-              </template>
-            </el-table-column>
             <el-table-column label="股票" min-width="150">
               <template #default="{ row }">
                 <strong>{{ row.name }}</strong>
@@ -84,15 +78,17 @@
               <el-empty description="暂无自选股，请先添加股票代码" />
             </template>
           </el-table>
-          <div v-if="filteredStocks.length" class="table-footer">
-            <span>当前筛选 {{ filteredStocks.length }} 只，自选总数 {{ watchStocks.length }} 只</span>
+          <div v-if="watchTotal" class="table-footer">
+            <span>{{ group }}共 {{ watchTotal }} 只</span>
             <el-pagination
-              v-model:current-page="watchPage"
-              v-model:page-size="watchPageSize"
+              :current-page="watchPage"
+              :page-size="watchPageSize"
               :page-sizes="[20, 50, 100]"
-              :total="filteredStocks.length"
+              :total="watchTotal"
               background
               layout="sizes, prev, pager, next, total"
+              @current-change="handleWatchPageChange"
+              @size-change="handleWatchPageSizeChange"
             />
           </div>
         </div>
@@ -145,14 +141,14 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
 import EChart from '../components/EChart.vue'
 import { klineOption, lineOption } from '../services/chartOptions'
 import { fetchStockDetail, searchStocks } from '../services/stocks'
-import { addWatchStock, fetchWatchlist, removeWatchStocks, reorderWatchStocks } from '../services/watchlist'
+import { addWatchStock, fetchWatchlistPage, removeWatchStocks } from '../services/watchlist'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
 const group = ref('全部')
@@ -167,23 +163,11 @@ const watchStocks = ref([])
 const selectedRows = ref([])
 const selected = ref(null)
 const detail = ref(null)
-const watchTableRef = ref(null)
 const watchPage = ref(1)
 const watchPageSize = ref(50)
+const watchTotal = ref(0)
 let refreshTimer = null
 let initialQuoteRefreshTimer = null
-let draggedCode = null
-
-const filteredStocks = computed(() => {
-  if (group.value === 'AI重点') return watchStocks.value.filter((item) => item.aiScore >= 78)
-  if (group.value === '高波动') return watchStocks.value.filter((item) => item.volumeRatio >= 1.8)
-  if (group.value === '稳健持有') return watchStocks.value.filter((item) => item.advice === '稳健持有')
-  return watchStocks.value
-})
-const pagedStocks = computed(() => {
-  const start = (watchPage.value - 1) * watchPageSize.value
-  return filteredStocks.value.slice(start, start + watchPageSize.value)
-})
 
 const intradayValues = computed(() => (detail.value?.intraday || []).map((point) => Number(point.value)))
 const intradayTimes = computed(() => (detail.value?.intraday || []).map((point) => point.time))
@@ -225,16 +209,28 @@ const financeItems = computed(() => [
 async function loadWatchlist({ loadInitialDetail = true, silent = false } = {}) {
   if (!silent) loading.value = true
   try {
-    const list = await fetchWatchlist()
-    watchStocks.value = list.map(normalizeStock)
+    const result = await fetchWatchlistPage({
+      page: watchPage.value,
+      pageSize: watchPageSize.value,
+      view: group.value,
+    })
+    watchStocks.value = (result?.items || []).map(normalizeStock)
+    watchTotal.value = Number(result?.total || 0)
+    watchPage.value = Number(result?.page || 1)
+    watchPageSize.value = Number(result?.pageSize || watchPageSize.value)
     if (loadInitialDetail && !selected.value && watchStocks.value.length) {
       void selectStock(watchStocks.value[0])
     } else if (selected.value) {
-      selected.value = watchStocks.value.find((item) => item.code === selected.value.code) || watchStocks.value[0] || null
+      const nextSelection = watchStocks.value.find((item) => item.code === selected.value.code) || watchStocks.value[0] || null
+      if (!nextSelection) {
+        selected.value = null
+        detail.value = null
+      } else if (nextSelection.code !== selected.value.code) {
+        void selectStock(nextSelection)
+      } else {
+        selected.value = nextSelection
+      }
     }
-    clampWatchPage()
-    await nextTick()
-    bindRowDragEvents()
   } catch (error) {
     if (!silent) ElMessage.error(error.message || '自选股列表获取失败')
   } finally {
@@ -333,59 +329,6 @@ async function deleteSelectedStocks() {
   }
 }
 
-async function reorderStocks(sourceCode, targetCode) {
-  if (!sourceCode || !targetCode || sourceCode === targetCode) {
-    return
-  }
-  const sourceIndex = watchStocks.value.findIndex((item) => item.code === sourceCode)
-  const targetIndex = watchStocks.value.findIndex((item) => item.code === targetCode)
-  if (sourceIndex < 0 || targetIndex < 0) {
-    return
-  }
-  const nextStocks = [...watchStocks.value]
-  const [moved] = nextStocks.splice(sourceIndex, 1)
-  nextStocks.splice(targetIndex, 0, moved)
-  watchStocks.value = nextStocks
-  await nextTick()
-  bindRowDragEvents()
-  try {
-    await reorderWatchStocks(nextStocks.map((item) => item.code))
-  } catch (error) {
-    ElMessage.error(error.message || '排序保存失败')
-    await loadWatchlist()
-  }
-}
-
-function bindRowDragEvents() {
-  const rows = watchTableRef.value?.$el?.querySelectorAll('.el-table__body-wrapper tbody tr')
-  if (!rows?.length) {
-    return
-  }
-  rows.forEach((row, index) => {
-    const stock = pagedStocks.value[index]
-    if (!stock) {
-      return
-    }
-    row.setAttribute('draggable', 'true')
-    row.dataset.code = stock.code
-    row.ondragstart = () => {
-      draggedCode = stock.code
-      row.classList.add('is-dragging')
-    }
-    row.ondragend = () => {
-      draggedCode = null
-      row.classList.remove('is-dragging')
-    }
-    row.ondragover = (event) => {
-      event.preventDefault()
-    }
-    row.ondrop = async (event) => {
-      event.preventDefault()
-      await reorderStocks(draggedCode, stock.code)
-    }
-  })
-}
-
 function normalizeStock(item) {
   return {
     ...item,
@@ -424,29 +367,23 @@ function formatYi(value) {
   })}亿`
 }
 
-watch(group, () => {
+watch(group, async () => {
   watchPage.value = 1
-  if (filteredStocks.value.length && !filteredStocks.value.some((item) => item.code === selected.value?.code)) {
-    selectStock(filteredStocks.value[0])
-  }
-  nextTick(bindRowDragEvents)
-})
-
-watch([filteredStocks, watchPageSize], () => {
-  clampWatchPage()
-  nextTick(bindRowDragEvents)
-})
-
-watch(watchPage, () => {
   selectedRows.value = []
-  nextTick(bindRowDragEvents)
+  await loadWatchlist()
 })
 
-function clampWatchPage() {
-  const totalPages = Math.max(1, Math.ceil(filteredStocks.value.length / watchPageSize.value))
-  if (watchPage.value > totalPages) {
-    watchPage.value = totalPages
-  }
+async function handleWatchPageChange(page) {
+  watchPage.value = page
+  selectedRows.value = []
+  await loadWatchlist({ loadInitialDetail: false })
+}
+
+async function handleWatchPageSizeChange(pageSize) {
+  watchPageSize.value = pageSize
+  watchPage.value = 1
+  selectedRows.value = []
+  await loadWatchlist({ loadInitialDetail: false })
 }
 
 onMounted(() => {
@@ -502,24 +439,6 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-.drag-handle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  color: #94a3b8;
-  font-size: 16px;
-  cursor: grab;
-  user-select: none;
-}
-
-.drag-handle:hover {
-  color: #2563eb;
-  background: #eff6ff;
-}
-
 .table-footer {
   display: flex;
   align-items: center;
@@ -534,10 +453,6 @@ onUnmounted(() => {
   color: #64748b;
   font-size: 13px;
   line-height: 20px;
-}
-
-:deep(.el-table__body tr.is-dragging) {
-  opacity: 0.55;
 }
 
 .watch-layout {

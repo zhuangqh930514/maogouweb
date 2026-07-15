@@ -28,19 +28,13 @@
         </div>
         <div class="surface-body">
           <el-table
-            ref="portfolioTableRef"
             v-loading="loading"
-            :data="pagedPositionRows"
+            :data="positionRows"
             class="compact-table"
             row-key="code"
             @selection-change="selectedRows = $event"
           >
             <el-table-column type="selection" width="46" />
-            <el-table-column label="排序" width="70">
-              <template #default>
-                <span class="drag-handle" title="拖拽排序">☰</span>
-              </template>
-            </el-table-column>
             <el-table-column label="股票" min-width="130">
               <template #default="{ row }">
                 <strong>{{ row.name }}</strong>
@@ -65,15 +59,17 @@
               </template>
             </el-table-column>
           </el-table>
-          <div v-if="positionRows.length" class="table-footer">
-            <span>当前持仓 {{ positionRows.length }} 只</span>
+          <div v-if="positionTotal" class="table-footer">
+            <span>当前持仓 {{ positionTotal }} 只</span>
             <el-pagination
-              v-model:current-page="positionPage"
-              v-model:page-size="positionPageSize"
+              :current-page="positionPage"
+              :page-size="positionPageSize"
               :page-sizes="[20, 50, 100]"
-              :total="positionRows.length"
+              :total="positionTotal"
               background
               layout="sizes, prev, pager, next, total"
+              @current-change="handlePositionPageChange"
+              @size-change="handlePositionPageSizeChange"
             />
           </div>
         </div>
@@ -139,9 +135,8 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
 import EChart from '../components/EChart.vue'
 import MetricCard from '../components/MetricCard.vue'
 import { profitOption } from '../services/chartOptions'
@@ -149,26 +144,19 @@ import { createBuyTrade, fetchPortfolioPositions, removePortfolioPositions } fro
 import { searchStocks } from '../services/stocks'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
-const POSITION_ORDER_KEY = 'maogou_portfolio_position_order'
 const loading = ref(false)
 const saving = ref(false)
 const batchDeleting = ref(false)
 const stockKeyword = ref('')
 const selectedStock = ref(null)
 const selectedRows = ref([])
-const positionOrder = ref(loadPositionOrder())
-const portfolioTableRef = ref(null)
 const summary = ref({ totalCost: 0, totalMarketValue: 0, totalProfit: 0, profitRate: 0, positions: [] })
-const positionRows = computed(() => sortPositions((summary.value.positions || []).map(normalizePosition)))
+const positionRows = computed(() => (summary.value.positions || []).map(normalizePosition))
 const positionPage = ref(1)
 const positionPageSize = ref(50)
-const pagedPositionRows = computed(() => {
-  const start = (positionPage.value - 1) * positionPageSize.value
-  return positionRows.value.slice(start, start + positionPageSize.value)
-})
+const positionTotal = computed(() => Number(summary.value.positionTotal || 0))
 let refreshTimer = null
 let initialQuoteRefreshTimer = null
-let draggedCode = null
 
 const totalMarketValue = computed(() => Number(summary.value.totalMarketValue || 0))
 const totalCost = computed(() => Number(summary.value.totalCost || 0))
@@ -188,11 +176,13 @@ const tradeForm = reactive({
 async function loadPortfolio({ silent = false } = {}) {
   if (!silent) loading.value = true
   try {
-    summary.value = await fetchPortfolioPositions()
+    summary.value = await fetchPortfolioPositions({
+      page: positionPage.value,
+      pageSize: positionPageSize.value,
+    })
+    positionPage.value = Number(summary.value?.page || 1)
+    positionPageSize.value = Number(summary.value?.pageSize || positionPageSize.value)
     selectedRows.value = []
-    clampPositionPage()
-    await nextTick()
-    bindRowDragEvents()
   } catch (error) {
     if (!silent) ElMessage.error(error.message || '持仓数据获取失败')
   } finally {
@@ -209,8 +199,6 @@ async function deleteSelectedPositions() {
     await ElMessageBox.confirm(`确认删除选中的 ${codes.length} 只持仓？对应买入记录也会一并删除。`, '批量删除持仓', { type: 'warning' })
     batchDeleting.value = true
     await removePortfolioPositions(codes)
-    positionOrder.value = positionOrder.value.filter((code) => !codes.includes(code))
-    savePositionOrder()
     selectedRows.value = []
     ElMessage.success('已批量删除')
     await loadPortfolio()
@@ -221,84 +209,6 @@ async function deleteSelectedPositions() {
   } finally {
     batchDeleting.value = false
   }
-}
-
-async function reorderPositions(sourceCode, targetCode) {
-  if (!sourceCode || !targetCode || sourceCode === targetCode) {
-    return
-  }
-  const rows = positionRows.value
-  const sourceIndex = rows.findIndex((item) => item.code === sourceCode)
-  const targetIndex = rows.findIndex((item) => item.code === targetCode)
-  if (sourceIndex < 0 || targetIndex < 0) {
-    return
-  }
-  const nextRows = [...rows]
-  const [moved] = nextRows.splice(sourceIndex, 1)
-  nextRows.splice(targetIndex, 0, moved)
-  positionOrder.value = nextRows.map((item) => item.code)
-  savePositionOrder()
-  await nextTick()
-  bindRowDragEvents()
-}
-
-function bindRowDragEvents() {
-  const rows = portfolioTableRef.value?.$el?.querySelectorAll('.el-table__body-wrapper tbody tr')
-  if (!rows?.length) {
-    return
-  }
-  rows.forEach((row, index) => {
-    const position = pagedPositionRows.value[index]
-    if (!position) {
-      return
-    }
-    row.setAttribute('draggable', 'true')
-    row.dataset.code = position.code
-    row.ondragstart = () => {
-      draggedCode = position.code
-      row.classList.add('is-dragging')
-    }
-    row.ondragend = () => {
-      draggedCode = null
-      row.classList.remove('is-dragging')
-    }
-    row.ondragover = (event) => {
-      event.preventDefault()
-    }
-    row.ondrop = async (event) => {
-      event.preventDefault()
-      await reorderPositions(draggedCode, position.code)
-    }
-  })
-}
-
-function sortPositions(rows) {
-  const order = positionOrder.value
-  if (!order.length) {
-    return rows
-  }
-  const orderMap = new Map(order.map((code, index) => [code, index]))
-  return [...rows].sort((left, right) => {
-    const leftIndex = orderMap.has(left.code) ? orderMap.get(left.code) : Number.MAX_SAFE_INTEGER
-    const rightIndex = orderMap.has(right.code) ? orderMap.get(right.code) : Number.MAX_SAFE_INTEGER
-    if (leftIndex === rightIndex) {
-      return 0
-    }
-    return leftIndex - rightIndex
-  })
-}
-
-function loadPositionOrder() {
-  try {
-    const value = window.localStorage.getItem(POSITION_ORDER_KEY)
-    return value ? JSON.parse(value) : []
-  } catch {
-    return []
-  }
-}
-
-function savePositionOrder() {
-  window.localStorage.setItem(POSITION_ORDER_KEY, JSON.stringify(positionOrder.value))
 }
 
 async function saveTrade() {
@@ -395,21 +305,17 @@ function formatDateTime(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-watch([positionRows, positionPageSize], () => {
-  clampPositionPage()
-  nextTick(bindRowDragEvents)
-})
-
-watch(positionPage, () => {
+async function handlePositionPageChange(page) {
+  positionPage.value = page
   selectedRows.value = []
-  nextTick(bindRowDragEvents)
-})
+  await loadPortfolio()
+}
 
-function clampPositionPage() {
-  const totalPages = Math.max(1, Math.ceil(positionRows.value.length / positionPageSize.value))
-  if (positionPage.value > totalPages) {
-    positionPage.value = totalPages
-  }
+async function handlePositionPageSizeChange(pageSize) {
+  positionPageSize.value = pageSize
+  positionPage.value = 1
+  selectedRows.value = []
+  await loadPortfolio()
 }
 
 onMounted(() => {
@@ -443,24 +349,6 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-.drag-handle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  color: #94a3b8;
-  font-size: 16px;
-  cursor: grab;
-  user-select: none;
-}
-
-.drag-handle:hover {
-  color: #2563eb;
-  background: #eff6ff;
-}
-
 .table-footer {
   display: flex;
   align-items: center;
@@ -475,10 +363,6 @@ onUnmounted(() => {
   color: #64748b;
   font-size: 13px;
   line-height: 20px;
-}
-
-:deep(.el-table__body tr.is-dragging) {
-  opacity: 0.55;
 }
 
 .form-grid {

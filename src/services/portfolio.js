@@ -1,7 +1,7 @@
 import { request } from './http'
 
-export function fetchPortfolioPositions() {
-  return request('/api/portfolio/positions')
+export function fetchPortfolioPositions({ page = 1, pageSize = 50 } = {}) {
+  return request(`/api/portfolio/positions?page=${page}&pageSize=${pageSize}`)
 }
 
 export function createBuyTrade(payload) {

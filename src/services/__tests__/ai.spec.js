@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { request } from '../http'
-import { fetchAiReportPage } from '../ai'
+import { fetchAiReport, fetchAiReportPage, fetchLatestAiReport } from '../ai'
 
 vi.mock('../http', () => ({ request: vi.fn() }))
 
@@ -28,5 +28,13 @@ describe('AI report service', () => {
     await fetchAiReportPage({ page: 1, pageSize: 10, filter: 'ALL' })
 
     expect(request).toHaveBeenCalledWith('/api/ai/reports/page?page=1&pageSize=10&filter=ALL')
+  })
+
+  it('loads full report content only from the detail endpoint', async () => {
+    await fetchAiReport(42)
+    await fetchLatestAiReport('600519')
+
+    expect(request).toHaveBeenNthCalledWith(1, '/api/ai/reports/42')
+    expect(request).toHaveBeenNthCalledWith(2, '/api/ai/reports/latest?code=600519')
   })
 })
