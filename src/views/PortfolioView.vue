@@ -167,6 +167,7 @@ const pagedPositionRows = computed(() => {
   return positionRows.value.slice(start, start + positionPageSize.value)
 })
 let refreshTimer = null
+let initialQuoteRefreshTimer = null
 let draggedCode = null
 
 const totalMarketValue = computed(() => Number(summary.value.totalMarketValue || 0))
@@ -184,8 +185,8 @@ const tradeForm = reactive({
   time: new Date(),
 })
 
-async function loadPortfolio() {
-  loading.value = true
+async function loadPortfolio({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     summary.value = await fetchPortfolioPositions()
     selectedRows.value = []
@@ -193,9 +194,9 @@ async function loadPortfolio() {
     await nextTick()
     bindRowDragEvents()
   } catch (error) {
-    ElMessage.error(error.message || '持仓数据获取失败')
+    if (!silent) ElMessage.error(error.message || '持仓数据获取失败')
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -413,14 +414,18 @@ function clampPositionPage() {
 
 onMounted(() => {
   loadPortfolio()
+  initialQuoteRefreshTimer = window.setTimeout(() => loadPortfolio({ silent: true }), 2500)
   refreshTimer = window.setInterval(() => {
     if (isAshareMarketOpen()) {
-      loadPortfolio()
+      loadPortfolio({ silent: true })
     }
   }, 60000)
 })
 
 onUnmounted(() => {
+  if (initialQuoteRefreshTimer) {
+    window.clearTimeout(initialQuoteRefreshTimer)
+  }
   if (refreshTimer) {
     window.clearInterval(refreshTimer)
   }

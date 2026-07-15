@@ -171,6 +171,7 @@ const watchTableRef = ref(null)
 const watchPage = ref(1)
 const watchPageSize = ref(50)
 let refreshTimer = null
+let initialQuoteRefreshTimer = null
 let draggedCode = null
 
 const filteredStocks = computed(() => {
@@ -221,8 +222,8 @@ const financeItems = computed(() => [
   { label: '每股经营现金流', value: formatNumberOrEmpty(finance.value.operatingCashFlowPerShare) },
 ])
 
-async function loadWatchlist({ loadInitialDetail = true } = {}) {
-  loading.value = true
+async function loadWatchlist({ loadInitialDetail = true, silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const list = await fetchWatchlist()
     watchStocks.value = list.map(normalizeStock)
@@ -235,14 +236,14 @@ async function loadWatchlist({ loadInitialDetail = true } = {}) {
     await nextTick()
     bindRowDragEvents()
   } catch (error) {
-    ElMessage.error(error.message || '自选股列表获取失败')
+    if (!silent) ElMessage.error(error.message || '自选股列表获取失败')
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
 async function refreshWatchlistRealtime() {
-  await loadWatchlist({ loadInitialDetail: false })
+  await loadWatchlist({ loadInitialDetail: false, silent: true })
 }
 
 async function selectStock(row) {
@@ -450,6 +451,7 @@ function clampWatchPage() {
 
 onMounted(() => {
   loadWatchlist()
+  initialQuoteRefreshTimer = window.setTimeout(refreshWatchlistRealtime, 2500)
   refreshTimer = window.setInterval(() => {
     if (!document.hidden && isAshareMarketOpen()) {
       refreshWatchlistRealtime()
@@ -458,6 +460,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  if (initialQuoteRefreshTimer) {
+    window.clearTimeout(initialQuoteRefreshTimer)
+  }
   if (refreshTimer) {
     window.clearInterval(refreshTimer)
   }
