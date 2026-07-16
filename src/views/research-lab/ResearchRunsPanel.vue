@@ -27,14 +27,38 @@
       </div>
       <div class="operation-date-controls">
         <el-date-picker v-model="operationDate" type="date" value-format="YYYY-MM-DD" aria-label="全局任务交易日" />
-        <el-date-picker
-          v-model="bootstrapRange"
-          type="daterange"
-          value-format="YYYY-MM-DD"
-          start-placeholder="冷启动开始日"
-          end-placeholder="冷启动结束日"
-          aria-label="历史冷启动日期范围"
-        />
+        <label class="operation-parameter">
+          <span>历史训练截止日</span>
+          <el-date-picker
+            v-model="bootstrapEndDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选择已收盘交易日"
+            aria-label="历史训练截止日"
+          />
+        </label>
+        <label class="operation-parameter">
+          <span>训练交易日</span>
+          <el-input-number
+            v-model="historyTradingDays"
+            :min="120"
+            :max="180"
+            :step="20"
+            controls-position="right"
+            aria-label="历史训练交易日数"
+          />
+        </label>
+        <label class="operation-parameter">
+          <span>训练股票数</span>
+          <el-input-number
+            v-model="historyStockCount"
+            :min="200"
+            :max="250"
+            :step="50"
+            controls-position="right"
+            aria-label="历史训练股票数"
+          />
+        </label>
       </div>
       <div class="research-operation-list">
         <article v-for="item in operations" :key="item.key" class="research-operation-row">
@@ -50,7 +74,7 @@
             <el-button
               :type="item.key === 'daily' ? 'primary' : 'default'"
               :loading="runningOperation === item.key"
-              :disabled="Boolean(runningOperation) && runningOperation !== item.key"
+              :disabled="operationDisabled(item.key)"
               @click="runGlobalOperation(item)"
             >{{ item.buttonLabel }}</el-button>
           </div>
@@ -89,7 +113,9 @@ defineProps({ canOperate: Boolean })
 const today = new Date().toISOString().slice(0, 10)
 const projectionDate = ref(today)
 const operationDate = ref(today)
-const bootstrapRange = ref([])
+const bootstrapEndDate = ref(today)
+const historyTradingDays = ref(120)
+const historyStockCount = ref(200)
 const personalRunning = ref(false)
 const personalRun = ref(null)
 const runningOperation = ref('')
@@ -103,9 +129,9 @@ const operations = Object.freeze([
     prerequisite: '目标交易日收盘行情、基准和行业数据已完整到达。',
   },
   {
-    key: 'bootstrap', title: '历史冷启动', buttonLabel: '运行历史冷启动',
-    impact: '按历史交易日回放正式股票池和时点一致性数据，批量积累成熟标签。',
-    prerequisite: '历史股票池成分、复权行情、行业归属和交易日历完整。',
+    key: 'bootstrap', title: '历史训练初始化', buttonLabel: '导入历史数据并初始化',
+    impact: '导入截止日前 120 个以上真实交易日，额外回放 5 个交易日生成 T+5 成熟标签，再更新因子研究并训练候选模型；不会自动晋级正式策略。',
+    prerequisite: '正式交易日历和东方财富历史行情可用。首版使用当前上市股票历史队列，存在幸存者偏差，研究结论必须继续滚动验证。',
   },
   {
     key: 'labels', title: '成熟标签验证', buttonLabel: '验证成熟标签',
@@ -183,12 +209,18 @@ async function runGlobalOperation(item) {
   try {
     const accepted = await runResearchAction(item.key, operationPayload(item.key))
     operationRuns[item.key] = { id: accepted.pipelineRunId, status: accepted.status }
-    await pollPipelineRun(accepted.pipelineRunId, {
+    if (item.key === 'bootstrap') {
+      ElMessage.success('历史训练已提交，可在全局流水线记录中查看进度')
+      runsTable.value?.load()
+      void trackHistoricalBootstrap(accepted.pipelineRunId)
+      return
+    }
+    const detail = await pollPipelineRun(accepted.pipelineRunId, {
       onUpdate: (detail) => {
         operationRuns[item.key] = { id: accepted.pipelineRunId, status: detail?.record?.fields?.status }
       },
     })
-    ElMessage.success(`${item.title}已完成`)
+    notifyOperationCompletion(detail, item.title)
     runsTable.value?.load()
   } catch (error) {
     ElMessage.error(error.message || `${item.title}执行失败`)
@@ -198,15 +230,57 @@ async function runGlobalOperation(item) {
 }
 
 function operationValidation(key) {
-  if (key === 'bootstrap' && (!bootstrapRange.value?.[0] || !bootstrapRange.value?.[1])) return '请选择历史冷启动日期范围'
+  if (key === 'bootstrap' && !bootstrapEndDate.value) return '请选择历史训练截止日'
+  if (key === 'bootstrap' && (historyTradingDays.value < 120 || historyTradingDays.value > 180)) return '训练交易日必须在 120 到 180 之间'
+  if (key === 'bootstrap' && (historyStockCount.value < 200 || historyStockCount.value > 250)) return '训练股票数必须在 200 到 250 之间'
   if (['daily', 'labels'].includes(key) && !operationDate.value) return '请选择目标交易日'
   return ''
 }
 
 function operationPayload(key) {
   const idempotencyKey = `WEB:${key.toUpperCase()}:${Date.now()}`
-  if (key === 'bootstrap') return { startDate: bootstrapRange.value[0], endDate: bootstrapRange.value[1], idempotencyKey }
+  if (key === 'bootstrap') return {
+    endDate: bootstrapEndDate.value,
+    historyTradingDays: historyTradingDays.value,
+    historyStockCount: historyStockCount.value,
+    idempotencyKey,
+  }
   if (['daily', 'labels'].includes(key)) return { tradeDate: operationDate.value, idempotencyKey }
   return { idempotencyKey }
+}
+
+function operationDisabled(key) {
+  const status = String(operationRuns[key]?.status || '').toUpperCase()
+  return (Boolean(runningOperation.value) && runningOperation.value !== key)
+    || ['PENDING', 'RUNNING'].includes(status)
+}
+
+async function trackHistoricalBootstrap(pipelineRunId) {
+  try {
+    const detail = await pollPipelineRun(pipelineRunId, {
+      interval: 5000,
+      maxAttempts: 4320,
+      onUpdate: (current) => {
+        operationRuns.bootstrap = { id: pipelineRunId, status: current?.record?.fields?.status }
+      },
+    })
+    notifyOperationCompletion(detail, '历史训练初始化')
+    runsTable.value?.load()
+  } catch (error) {
+    ElMessage.error(error.message || '历史训练初始化执行失败')
+  }
+}
+
+function notifyOperationCompletion(detail, title) {
+  const fields = detail?.record?.fields || {}
+  const status = String(fields.status || '').toUpperCase()
+  if (status === 'FAILED') {
+    throw new Error(fields.errorMessage || `${title}执行失败`)
+  }
+  if (status === 'PARTIAL_SUCCESS') {
+    ElMessage.warning(fields.errorMessage || `${title}已完成数据初始化，但后续研究或训练仍有未满足条件`)
+    return
+  }
+  ElMessage.success(`${title}已完成`)
 }
 </script>

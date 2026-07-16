@@ -60,7 +60,7 @@ describe('ResearchLabView', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('运行全局日度研究')
-    expect(wrapper.text()).not.toContain('运行历史冷启动')
+    expect(wrapper.text()).not.toContain('导入历史数据并初始化')
   })
 
   it('updates operation visibility from the authenticated user response', async () => {
@@ -72,6 +72,6 @@ describe('ResearchLabView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('运行全局日度研究')
-    expect(wrapper.text()).toContain('运行历史冷启动')
+    expect(wrapper.text()).toContain('导入历史数据并初始化')
   })
 })

@@ -399,6 +399,24 @@
   background: #f4f7fb;
 }
 
+.operation-parameter {
+  display: flex;
+  min-width: 168px;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.operation-parameter > span {
+  color: #647087;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.operation-parameter .el-date-editor,
+.operation-parameter .el-input-number {
+  width: 180px;
+}
+
 .research-operation-list {
   margin-top: 14px;
   border-top: 1px solid #e5e7eb;
@@ -535,6 +553,13 @@
   .research-filter-row .el-input,
   .research-filter-row .el-select,
   .research-filter-row .el-date-editor {
+    width: 100%;
+  }
+
+  .operation-date-controls,
+  .operation-parameter,
+  .operation-parameter .el-date-editor,
+  .operation-parameter .el-input-number {
     width: 100%;
   }
 }
