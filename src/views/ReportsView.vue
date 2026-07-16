@@ -1194,11 +1194,15 @@ onUnmounted(() => {
 }
 
 .report-item {
-  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px;
+  grid-template-areas:
+    "main score"
+    "main meta";
+  grid-template-columns: minmax(0, 1fr) minmax(148px, 180px);
+  grid-template-rows: auto auto;
   align-items: start;
-  gap: 12px;
+  column-gap: 16px;
+  row-gap: 8px;
   min-height: 92px;
   width: 100%;
   border: 1px solid #e5e7eb;
@@ -1210,6 +1214,7 @@ onUnmounted(() => {
 }
 
 .report-item-main {
+  grid-area: main;
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -1217,6 +1222,7 @@ onUnmounted(() => {
 }
 
 .report-item-content {
+  flex: 1;
   min-width: 0;
 }
 
@@ -1239,24 +1245,30 @@ onUnmounted(() => {
   margin-top: 8px;
   color: #6b7280;
   font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .report-score {
+  grid-area: score;
   font-size: 24px;
   font-weight: 800;
   text-align: right;
 }
 
 .report-meta {
-  position: absolute;
-  right: 18px;
-  bottom: 14px;
+  grid-area: meta;
+  justify-self: end;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  min-width: 0;
+  max-width: 100%;
   gap: 4px;
   color: #9ca3af;
   line-height: 1.2;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .report-detail {
@@ -1360,14 +1372,16 @@ onUnmounted(() => {
   }
 
   .report-item {
+    grid-template-areas:
+      "main score"
+      "meta meta";
     grid-template-columns: minmax(0, 1fr) 44px;
     min-height: 104px;
     padding: 14px;
   }
 
   .report-meta {
-    right: 14px;
-    bottom: 12px;
+    margin-top: 2px;
   }
 }
 </style>
