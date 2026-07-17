@@ -23,7 +23,7 @@ describe('ResearchRunsPanel', () => {
     vi.spyOn(ElMessage, 'warning').mockImplementation(() => {})
   })
 
-  it('submits the default 120-day 300-stock historical training request', async () => {
+  it('submits the default 300-day 300-stock historical training request', async () => {
     const wrapper = mount(ResearchRunsPanel, { props: { canOperate: true } })
     await flushPromises()
     wrapper.vm.bootstrapEndDate = '2026-07-16'
@@ -38,7 +38,7 @@ describe('ResearchRunsPanel', () => {
 
     expect(runResearchAction).toHaveBeenCalledWith('bootstrap', expect.objectContaining({
       endDate: '2026-07-16',
-      historyTradingDays: 120,
+      historyTradingDays: 300,
       historyStockCount: 300,
     }))
     expect(ElMessage.success).toHaveBeenCalledWith('历史训练已提交，可在全局流水线记录中查看进度')
