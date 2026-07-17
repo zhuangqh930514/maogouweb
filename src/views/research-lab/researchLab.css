@@ -417,6 +417,13 @@
   width: 180px;
 }
 
+.operation-estimate {
+  margin: 8px 12px 0;
+  color: #647087;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .research-operation-list {
   margin-top: 14px;
   border-top: 1px solid #e5e7eb;

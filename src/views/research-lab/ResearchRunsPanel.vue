@@ -53,13 +53,17 @@
           <el-input-number
             v-model="historyStockCount"
             :min="200"
-            :max="250"
+            :max="300"
             :step="50"
             controls-position="right"
             aria-label="历史训练股票数"
           />
         </label>
       </div>
+      <p class="operation-estimate">
+        预计回放 {{ historyTradingDays + 5 }} 个交易日，生成约
+        {{ ((historyTradingDays + 5) * historyStockCount).toLocaleString('zh-CN') }} 条历史样本。
+      </p>
       <div class="research-operation-list">
         <article v-for="item in operations" :key="item.key" class="research-operation-row">
           <div>
@@ -115,7 +119,7 @@ const projectionDate = ref(today)
 const operationDate = ref(today)
 const bootstrapEndDate = ref(today)
 const historyTradingDays = ref(120)
-const historyStockCount = ref(200)
+const historyStockCount = ref(300)
 const personalRunning = ref(false)
 const personalRun = ref(null)
 const runningOperation = ref('')
@@ -131,7 +135,7 @@ const operations = Object.freeze([
   {
     key: 'bootstrap', title: '历史训练初始化', buttonLabel: '导入历史数据并初始化',
     impact: '导入截止日前 120 个以上真实交易日，额外回放 5 个交易日生成 T+5 成熟标签，再更新因子研究并训练候选模型；不会自动晋级正式策略。',
-    prerequisite: '正式交易日历和东方财富历史行情可用。首版使用当前上市股票历史队列，存在幸存者偏差，研究结论必须继续滚动验证。',
+    prerequisite: '正式交易日历及至少一个真实历史行情源可用。首版使用当前上市股票历史队列，存在幸存者偏差，研究结论必须继续滚动验证。',
   },
   {
     key: 'labels', title: '成熟标签验证', buttonLabel: '验证成熟标签',
@@ -232,7 +236,7 @@ async function runGlobalOperation(item) {
 function operationValidation(key) {
   if (key === 'bootstrap' && !bootstrapEndDate.value) return '请选择历史训练截止日'
   if (key === 'bootstrap' && (historyTradingDays.value < 120 || historyTradingDays.value > 180)) return '训练交易日必须在 120 到 180 之间'
-  if (key === 'bootstrap' && (historyStockCount.value < 200 || historyStockCount.value > 250)) return '训练股票数必须在 200 到 250 之间'
+  if (key === 'bootstrap' && (historyStockCount.value < 200 || historyStockCount.value > 300)) return '训练股票数必须在 200 到 300 之间'
   if (['daily', 'labels'].includes(key) && !operationDate.value) return '请选择目标交易日'
   return ''
 }
