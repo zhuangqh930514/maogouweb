@@ -42,7 +42,7 @@
           <el-input-number
             v-model="historyTradingDays"
             :min="120"
-            :max="300"
+            :max="400"
             :step="20"
             controls-position="right"
             aria-label="历史训练交易日数"
@@ -118,7 +118,7 @@ const today = new Date().toISOString().slice(0, 10)
 const projectionDate = ref(today)
 const operationDate = ref(today)
 const bootstrapEndDate = ref(today)
-const historyTradingDays = ref(300)
+const historyTradingDays = ref(400)
 const historyStockCount = ref(300)
 const personalRunning = ref(false)
 const personalRun = ref(null)
@@ -235,7 +235,7 @@ async function runGlobalOperation(item) {
 
 function operationValidation(key) {
   if (key === 'bootstrap' && !bootstrapEndDate.value) return '请选择历史训练截止日'
-  if (key === 'bootstrap' && (historyTradingDays.value < 120 || historyTradingDays.value > 300)) return '训练交易日必须在 120 到 300 之间'
+  if (key === 'bootstrap' && (historyTradingDays.value < 120 || historyTradingDays.value > 400)) return '训练交易日必须在 120 到 400 之间'
   if (key === 'bootstrap' && (historyStockCount.value < 200 || historyStockCount.value > 300)) return '训练股票数必须在 200 到 300 之间'
   if (['daily', 'labels'].includes(key) && !operationDate.value) return '请选择目标交易日'
   return ''
