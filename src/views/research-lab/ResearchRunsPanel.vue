@@ -118,8 +118,8 @@ const today = new Date().toISOString().slice(0, 10)
 const projectionDate = ref(today)
 const operationDate = ref(today)
 const bootstrapEndDate = ref(today)
-const historyTradingDays = ref(400)
-const historyStockCount = ref(300)
+const historyTradingDays = ref(120)
+const historyStockCount = ref(240)
 const personalRunning = ref(false)
 const personalRun = ref(null)
 const runningOperation = ref('')
@@ -160,6 +160,9 @@ const runStatusOptions = Object.freeze([
   { label: '等待数据源', value: 'WAITING_SOURCE' },
   { label: '成功', value: 'SUCCESS' },
   { label: '部分成功', value: 'PARTIAL_SUCCESS' },
+  { label: '数据积累不足', value: 'INSUFFICIENT_DATA' },
+  { label: '已跳过', value: 'SKIPPED' },
+  { label: '已取消', value: 'CANCELLED' },
   { label: '执行失败', value: 'FAILED' },
 ])
 const runColumns = Object.freeze([
@@ -181,12 +184,12 @@ async function runPersonalProjection() {
   try {
     const accepted = await runUserProjection({ tradeDate: projectionDate.value })
     personalRun.value = { id: accepted.pipelineRunId, status: accepted.status }
-    await pollPipelineRun(accepted.pipelineRunId, {
+    const detail = await pollPipelineRun(accepted.pipelineRunId, {
       onUpdate: (detail) => {
         personalRun.value = { id: accepted.pipelineRunId, status: detail?.record?.fields?.status }
       },
     })
-    ElMessage.success('我的投研日报已重新生成')
+    notifyOperationCompletion(detail, '我的投研日报')
   } catch (error) {
     ElMessage.error(error.message || '用户日报投影执行失败')
   } finally {
@@ -283,6 +286,10 @@ function notifyOperationCompletion(detail, title) {
   }
   if (status === 'PARTIAL_SUCCESS') {
     ElMessage.warning(fields.errorMessage || `${title}已完成数据初始化，但后续研究或训练仍有未满足条件`)
+    return
+  }
+  if (['INSUFFICIENT_DATA', 'SKIPPED', 'CANCELLED'].includes(status)) {
+    ElMessage.warning(fields.errorMessage || `${title}${statusLabel(status)}`)
     return
   }
   ElMessage.success(`${title}已完成`)

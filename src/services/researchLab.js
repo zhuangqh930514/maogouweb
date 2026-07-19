@@ -84,7 +84,7 @@ export async function pollPipelineRun(
     latest = await fetchPipelineRun(pipelineRunId)
     onUpdate?.(latest)
     const status = String(latest?.record?.fields?.status || '').toUpperCase()
-    if (['SUCCESS', 'PARTIAL_SUCCESS', 'FAILED'].includes(status)) {
+    if (['SUCCESS', 'PARTIAL_SUCCESS', 'FAILED', 'INSUFFICIENT_DATA', 'SKIPPED', 'CANCELLED'].includes(status)) {
       return latest
     }
     if (attempt < maxAttempts - 1) {

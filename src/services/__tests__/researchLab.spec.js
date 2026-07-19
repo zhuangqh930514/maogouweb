@@ -3,6 +3,7 @@ import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchResearchSamples,
+  pollPipelineRun,
   runUserProjection,
 } from '../researchLab'
 import { request } from '../http'
@@ -41,6 +42,24 @@ describe('researchLab service', () => {
       method: 'POST',
       body: { tradeDate: '2026-07-14' },
     })
+  })
+
+  it('stops polling when a training run is blocked by insufficient data', async () => {
+    request
+      .mockResolvedValueOnce({ record: { fields: { status: 'RUNNING' } } })
+      .mockResolvedValueOnce({
+        record: {
+          fields: {
+            status: 'INSUFFICIENT_DATA',
+            errorMessage: '训练数据尚未就绪',
+          },
+        },
+      })
+
+    const result = await pollPipelineRun(88, { interval: 0, maxAttempts: 3 })
+
+    expect(request).toHaveBeenCalledTimes(2)
+    expect(result.record.fields.status).toBe('INSUFFICIENT_DATA')
   })
 
   it('contains no retired AI research API paths anywhere in frontend source', () => {

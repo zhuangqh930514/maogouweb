@@ -23,7 +23,7 @@ describe('ResearchRunsPanel', () => {
     vi.spyOn(ElMessage, 'warning').mockImplementation(() => {})
   })
 
-  it('submits the default 400-day 300-stock historical training request', async () => {
+  it('submits the default 120-day 240-stock historical training request', async () => {
     const wrapper = mount(ResearchRunsPanel, { props: { canOperate: true } })
     await flushPromises()
     wrapper.vm.bootstrapEndDate = '2026-07-16'
@@ -38,9 +38,21 @@ describe('ResearchRunsPanel', () => {
 
     expect(runResearchAction).toHaveBeenCalledWith('bootstrap', expect.objectContaining({
       endDate: '2026-07-16',
-      historyTradingDays: 400,
-      historyStockCount: 300,
+      historyTradingDays: 120,
+      historyStockCount: 240,
     }))
     expect(ElMessage.success).toHaveBeenCalledWith('历史训练已提交，可在全局流水线记录中查看进度')
+  })
+
+  it('shows skipped operations as warnings instead of successes', async () => {
+    const wrapper = mount(ResearchRunsPanel, { props: { canOperate: true } })
+    await flushPromises()
+
+    wrapper.vm.notifyOperationCompletion({
+      record: { fields: { status: 'SKIPPED', errorMessage: '生产环境只接收候选模型包' } },
+    }, '月度模型训练')
+
+    expect(ElMessage.warning).toHaveBeenCalledWith('生产环境只接收候选模型包')
+    expect(ElMessage.success).not.toHaveBeenCalledWith('月度模型训练已完成')
   })
 })

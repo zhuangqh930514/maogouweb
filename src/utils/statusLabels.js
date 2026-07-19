@@ -13,6 +13,7 @@ const STATUS_LABELS = Object.freeze({
   BUILD_SAMPLES: '固化研究样本',
   BULL: '强势',
   BUY: '买入',
+  CANCELLED: '已取消',
   CANDIDATE: '候选模型',
   CHALLENGER: '候选策略',
   CHALLENGER_SHADOW: '候选策略影子运行',
@@ -34,6 +35,7 @@ const STATUS_LABELS = Object.freeze({
   EMPTY_RESULT: '暂无结果',
   ENABLED: '已启用',
   EVALUATED: '已评估',
+  EVALUATE_HISTORICAL_PREDICTIONS: '评估历史预测',
   EVALUATE_PREDICTIONS: '评估成熟预测',
   EXECUTED: '已成交',
   EXCLUDED: '已排除',
@@ -48,8 +50,12 @@ const STATUS_LABELS = Object.freeze({
   GENERATE_PREDICTIONS: '生成预测结果',
   GENERATE_REPORTS: '生成个股报告',
   GLOBAL_DAILY_RESEARCH: '全局日度研究',
+  GLOBAL_HISTORICAL_BOOTSTRAP: '全局历史训练初始化',
+  GLOBAL_MONTHLY_TRAINING: '全局月度模型训练',
+  GLOBAL_WEEKLY_RESEARCH: '全局周度策略研究',
   HEALTHY: '健康',
   HISTORICAL_BOOTSTRAP: '历史冷启动',
+  HISTORICAL_RESEARCH_READY: '汇总历史研究结果',
   HIGH: '高风险',
   HIGH_RISK: '高风险',
   HOLD: '持有',
@@ -59,6 +65,7 @@ const STATUS_LABELS = Object.freeze({
   HUMAN_ROLLBACK_CONFIRMED: '人工确认策略回滚',
   IDLE: '等待中',
   INACTIVE: '未启用',
+  IMPORT_HISTORICAL_EVIDENCE: '导入历史研究证据',
   INSUFFICIENT_DATA: '数据积累不足',
   INTRADAY: '盘中',
   LABEL_VERIFICATION: '成熟标签验证',
@@ -66,14 +73,18 @@ const STATUS_LABELS = Object.freeze({
   LOW_SAMPLE: '样本不足',
   MARKET: '市场',
   MATURED: '标签已成熟',
+  MATURE_HISTORICAL_SAMPLE_LABELS: '生成历史成熟标签',
   MATURE_SAMPLE_LABELS: '生成成熟标签',
   MEDIUM: '中风险',
   MISSING: '数据缺失',
+  MISSING_HISTORICAL_UNIVERSE: '缺少历史股票池',
   MODEL: '模型推理',
   MODEL_TRAINING: '模型训练',
   NEGATIVE: '负向',
   NEUTRAL: '中性',
   NO_TRIGGER: '未触发',
+  NO_TRADING_DAYS: '没有可回放交易日',
+  NOT_TRADING_DAY: '非交易日',
   PARTIAL_READY: '部分就绪',
   PARTIAL_SUCCESS: '部分成功',
   PENDING: '待处理',
@@ -119,13 +130,16 @@ const STATUS_LABELS = Object.freeze({
   SUPPORT: '支持',
   TAKE_PROFIT: '分批止盈',
   TECHNICAL: '技术面',
+  TRAIN_HISTORICAL_MODEL: '训练历史候选模型',
   TRADABLE: '可交易',
   TRENDING: '趋势行情',
   UNAVAILABLE: '数据不可用',
   UNFILLED: '未成交',
   UNKNOWN: '待确认',
   UP: '看涨',
+  UPDATE_HISTORICAL_RESEARCH: '更新历史因子与策略研究',
   USER_DAILY_PROJECTION: '用户日报投影',
+  VALIDATE_HISTORICAL_EVIDENCE: '校验历史研究证据',
   VALIDATED: '已验证模型',
   VERIFIED: '已验证',
   VERIFY_LABELS: '复盘成熟预测',
@@ -142,10 +156,18 @@ const REPLACEMENTS = Object.entries(STATUS_LABELS)
   .sort(([left], [right]) => right.length - left.length)
 const WARNED_STATUS_VALUES = new Set()
 
+function dynamicStatusLabel(normalized) {
+  const replay = normalized.match(/^REPLAY_(\d+)$/)
+  if (replay) return `历史回放第 ${Number(replay[1])} 批`
+  return ''
+}
+
 export function statusLabel(value, fallback = '-') {
   if (value === null || value === undefined || value === '') return fallback
   const normalized = String(value).trim().toUpperCase()
   if (STATUS_LABELS[normalized]) return STATUS_LABELS[normalized]
+  const dynamic = dynamicStatusLabel(normalized)
+  if (dynamic) return dynamic
   if (!WARNED_STATUS_VALUES.has(normalized)) {
     WARNED_STATUS_VALUES.add(normalized)
     console.warn(`发现未配置的状态枚举：${normalized}`)
@@ -155,7 +177,8 @@ export function statusLabel(value, fallback = '-') {
 
 export function localizeStatusText(value, fallback = '-') {
   if (value === null || value === undefined || value === '') return fallback
-  let result = String(value)
+  let result = String(value).replace(/\bREPLAY_(\d+)\b/gi,
+    (_, sequence) => `历史回放第 ${Number(sequence)} 批`)
   for (const [code, label] of REPLACEMENTS) {
     const pattern = new RegExp(`(^|[^A-Z0-9_])${code}(?=$|[^A-Z0-9_])`, 'g')
     result = result.replace(pattern, `$1${label}`)

@@ -9,12 +9,16 @@ describe('statusLabels', () => {
     expect(statusLabel('BALANCED')).toBe('均衡震荡')
     expect(statusLabel('CURRENT_CLOSE')).toBe('当日收盘数据')
     expect(statusLabel('WATCHLIST')).toBe('自选股')
+    expect(statusLabel('GLOBAL_HISTORICAL_BOOTSTRAP')).toBe('全局历史训练初始化')
+    expect(statusLabel('MATURE_HISTORICAL_SAMPLE_LABELS')).toBe('生成历史成熟标签')
+    expect(statusLabel('REPLAY_0007')).toBe('历史回放第 7 批')
   })
 
   it('translates status tokens embedded in historical summaries', () => {
     const text = localizeStatusText('数据状态 FRESH，市场状态 BALANCED，流水线 PARTIAL_SUCCESS。')
 
     expect(text).toBe('数据状态 数据新鲜，市场状态 均衡震荡，流水线 部分成功。')
+    expect(localizeStatusText('当前步骤 REPLAY_0012。')).toBe('当前步骤 历史回放第 12 批。')
   })
 
   it('warns and localizes an unknown status instead of exposing its raw enum alone', () => {
