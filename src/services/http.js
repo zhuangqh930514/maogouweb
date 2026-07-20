@@ -11,7 +11,8 @@ export class ApiError extends Error {
 
 export async function request(path, options = {}) {
   const headers = new Headers(options.headers || {})
-  if (!headers.has('Content-Type') && options.body) {
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+  if (!headers.has('Content-Type') && options.body && !isFormData) {
     headers.set('Content-Type', 'application/json')
   }
 
@@ -23,7 +24,7 @@ export async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
-    body: options.body && typeof options.body !== 'string' ? JSON.stringify(options.body) : options.body,
+    body: options.body && typeof options.body !== 'string' && !isFormData ? JSON.stringify(options.body) : options.body,
   })
 
   const payload = await readPayload(response)

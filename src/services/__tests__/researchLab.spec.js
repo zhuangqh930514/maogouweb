@@ -3,7 +3,9 @@ import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchResearchSamples,
+  importTrainingDatasetPackage,
   pollPipelineRun,
+  previewTrainingDatasetPackage,
   runUserProjection,
 } from '../researchLab'
 import { request } from '../http'
@@ -60,6 +62,24 @@ describe('researchLab service', () => {
 
     expect(request).toHaveBeenCalledTimes(2)
     expect(result.record.fields.status).toBe('INSUFFICIENT_DATA')
+  })
+
+  it('uploads training dataset packages as multipart data for preview and controlled import', async () => {
+    request.mockResolvedValue({ compatible: true, rejectedRows: 0 })
+    const file = new File(['dataset'], 'maogou-training-dataset.tar.gz', { type: 'application/gzip' })
+
+    await previewTrainingDatasetPackage(file)
+    expect(request).toHaveBeenLastCalledWith(
+      '/api/ai/research-lab/actions/preview-training-dataset-import',
+      expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
+    )
+    expect(request.mock.calls.at(-1)[1].body.get('package')).toBe(file)
+
+    await importTrainingDatasetPackage(file)
+    expect(request).toHaveBeenLastCalledWith(
+      '/api/ai/research-lab/actions/import-training-dataset',
+      expect.objectContaining({ method: 'POST', body: expect.any(FormData) }),
+    )
   })
 
   it('contains no retired AI research API paths anywhere in frontend source', () => {

@@ -86,6 +86,59 @@
       </div>
     </section>
 
+    <section v-if="canOperate" class="surface research-operation-panel dataset-package-panel">
+      <div class="research-operation-header">
+        <div>
+          <h3>训练数据包导入</h3>
+          <p>本地训练数据必须先在生产事实库逐条验真。预检未通过时不会写入数据集。</p>
+        </div>
+        <el-tag type="warning" effect="plain">受控导入</el-tag>
+      </div>
+      <div class="dataset-package-controls">
+        <el-upload
+          :auto-upload="false"
+          :limit="1"
+          accept=".tar.gz"
+          :on-change="selectDatasetPackage"
+          :on-remove="clearDatasetPackage"
+        >
+          <el-button>选择训练数据包</el-button>
+          <template #tip><div class="el-upload__tip">仅支持本地导出的 `.tar.gz` 训练数据包。</div></template>
+        </el-upload>
+        <div class="research-operation-actions">
+          <el-button :loading="datasetPreviewing" :disabled="!datasetPackage" @click="previewDatasetPackage">预检数据包</el-button>
+          <el-button
+            type="primary"
+            :loading="datasetImporting"
+            :disabled="!canImportDatasetPackage"
+            @click="importDatasetPackage"
+          >确认导入</el-button>
+        </div>
+      </div>
+      <div v-if="datasetPreview" class="dataset-package-result">
+        <div class="dataset-package-summary">
+          <span>{{ datasetPreview.datasetKey }} / {{ datasetPreview.versionNo }}</span>
+          <span>{{ datasetPreview.matchedRows }} / {{ datasetPreview.declaredRows }} 条生产事实匹配</span>
+          <el-tag :type="datasetPreview.compatible ? 'success' : 'danger'" effect="plain">
+            {{ datasetPreview.compatible ? '预检通过' : '预检未通过' }}
+          </el-tag>
+          <el-tag v-if="datasetPreview.alreadyImported" type="info" effect="plain">已存在相同数据集</el-tag>
+        </div>
+        <p v-if="datasetPreview.rejectedRows" class="dataset-package-warning">
+          有 {{ datasetPreview.rejectedRows }} 条记录无法与生产事实唯一匹配，禁止导入。
+        </p>
+        <ul v-if="datasetPreview.rejections?.length" class="dataset-package-rejections">
+          <li v-for="item in datasetPreview.rejections" :key="`${item.lineNumber}-${item.reason}`">
+            明细第 {{ item.lineNumber }} 行：{{ item.reason }}
+          </li>
+        </ul>
+      </div>
+      <div v-if="datasetImported" class="operation-result-line">
+        <span>训练数据集 #{{ datasetImported.trainingDatasetId }}，{{ datasetImported.rowCount }} 条明细</span>
+        <el-tag type="success" effect="plain">{{ datasetImported.reused ? '已复用' : '已导入' }}</el-tag>
+      </div>
+    </section>
+
     <ResearchEvidenceTable
       ref="runsTable"
       title="全局流水线记录"
@@ -99,12 +152,14 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   fetchPipelineRun,
   fetchPipelineRuns,
   pollPipelineRun,
+  importTrainingDatasetPackage,
+  previewTrainingDatasetPackage,
   runResearchAction,
   runUserProjection,
 } from '../../services/researchLab'
@@ -125,6 +180,13 @@ const personalRun = ref(null)
 const runningOperation = ref('')
 const operationRuns = reactive({})
 const runsTable = ref(null)
+const datasetPackage = ref(null)
+const datasetPreview = ref(null)
+const datasetImported = ref(null)
+const datasetPreviewing = ref(false)
+const datasetImporting = ref(false)
+const canImportDatasetPackage = computed(() => Boolean(datasetPackage.value && datasetPreview.value?.compatible
+  && Number(datasetPreview.value?.rejectedRows || 0) === 0 && !datasetPreview.value?.alreadyImported))
 
 const operations = Object.freeze([
   {
@@ -194,6 +256,67 @@ async function runPersonalProjection() {
     ElMessage.error(error.message || '用户日报投影执行失败')
   } finally {
     personalRunning.value = false
+  }
+}
+
+function selectDatasetPackage(uploadFile) {
+  const file = uploadFile?.raw
+  if (!(file instanceof File) || !file.name.toLowerCase().endsWith('.tar.gz')) {
+    datasetPackage.value = null
+    datasetPreview.value = null
+    ElMessage.warning('请选择 .tar.gz 训练数据包')
+    return false
+  }
+  datasetPackage.value = file
+  datasetPreview.value = null
+  datasetImported.value = null
+  return false
+}
+
+function clearDatasetPackage() {
+  datasetPackage.value = null
+  datasetPreview.value = null
+  datasetImported.value = null
+}
+
+async function previewDatasetPackage() {
+  if (!datasetPackage.value) return
+  datasetPreviewing.value = true
+  datasetImported.value = null
+  try {
+    datasetPreview.value = await previewTrainingDatasetPackage(datasetPackage.value)
+    if (datasetPreview.value.compatible) {
+      ElMessage.success('训练数据包预检通过')
+    } else {
+      ElMessage.warning('训练数据包预检未通过，请先补齐生产事实')
+    }
+  } catch (error) {
+    datasetPreview.value = null
+    ElMessage.error(error.message || '训练数据包预检失败')
+  } finally {
+    datasetPreviewing.value = false
+  }
+}
+
+async function importDatasetPackage() {
+  if (!canImportDatasetPackage.value) return
+  try {
+    await ElMessageBox.confirm(
+      `将导入 ${datasetPreview.value.datasetKey}/${datasetPreview.value.versionNo}，共 ${datasetPreview.value.declaredRows} 条已验真数据。导入后不可修改。`,
+      '确认导入训练数据集',
+      { confirmButtonText: '确认导入', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  datasetImporting.value = true
+  try {
+    datasetImported.value = await importTrainingDatasetPackage(datasetPackage.value)
+    ElMessage.success(datasetImported.value.reused ? '训练数据集已存在，已复用' : '训练数据集导入完成')
+  } catch (error) {
+    ElMessage.error(error.message || '训练数据集导入失败')
+  } finally {
+    datasetImporting.value = false
   }
 }
 

@@ -7,7 +7,9 @@ import { pollPipelineRun, runResearchAction } from '../../services/researchLab'
 vi.mock('../../services/researchLab', () => ({
   fetchPipelineRun: vi.fn(),
   fetchPipelineRuns: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
+  importTrainingDatasetPackage: vi.fn(),
   pollPipelineRun: vi.fn(),
+  previewTrainingDatasetPackage: vi.fn(),
   runResearchAction: vi.fn(),
   runUserProjection: vi.fn(),
 }))

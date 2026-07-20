@@ -63,6 +63,14 @@ export function runUserProjection(payload = {}) {
   return post('/api/ai/research-lab/actions/run-user-projection', safePayload)
 }
 
+export function previewTrainingDatasetPackage(file) {
+  return uploadTrainingDatasetPackage('preview-training-dataset-import', file)
+}
+
+export function importTrainingDatasetPackage(file) {
+  return uploadTrainingDatasetPackage('import-training-dataset', file)
+}
+
 export function promoteStrategy(strategyId, payload) {
   return governance(strategyId, 'promote', payload)
 }
@@ -122,6 +130,15 @@ function governance(strategyId, operation, payload = {}) {
 
 function post(path, body) {
   return request(path, { method: 'POST', body: compact(body) })
+}
+
+function uploadTrainingDatasetPackage(action, file) {
+  if (!(file instanceof File)) {
+    return Promise.reject(new Error('请选择训练数据包文件'))
+  }
+  const form = new FormData()
+  form.append('package', file)
+  return request(`/api/ai/research-lab/actions/${action}`, { method: 'POST', body: form })
 }
 
 function compact(value = {}) {
