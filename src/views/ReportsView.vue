@@ -971,15 +971,23 @@ async function runWatchlistAnalysis() {
   analyzing.value = true
   beginAnalysisProgress('正在分析自选股')
   try {
-    await analyzeWatchlist(selectedPromptTemplateId.value)
+    const result = await analyzeWatchlist(selectedPromptTemplateId.value)
     filter.value = 'ALL'
     reportDate.value = localDateKey(new Date())
     dateShortcut.value = 'TODAY'
     reportPage.value = 1
     selectedIds.value = []
     await loadReports()
-    completeAnalysisProgress('已完成自选股分析，并刷新报告列表')
-    ElMessage.success('已触发自选股分析')
+    const analyzedCount = Number(result?.analyzedCount || 0)
+    const skippedCount = Number(result?.skippedCount || result?.skippedStocks?.length || 0)
+    if (skippedCount > 0) {
+      const reason = result?.skippedStocks?.[0]?.reason || '部分股票暂不具备正式研究样本'
+      completeAnalysisProgress(`已完成 ${analyzedCount} 只自选股分析，${skippedCount} 只等待收盘样本`)
+      ElMessage.warning(`已分析 ${analyzedCount} 只；${skippedCount} 只暂未分析：${reason}`)
+      return
+    }
+    completeAnalysisProgress(`已完成 ${analyzedCount} 只自选股分析，并刷新报告列表`)
+    ElMessage.success(`已完成 ${analyzedCount} 只自选股分析`)
   } catch (error) {
     logAnalysisError('自选股分析', error, { promptTemplateId: selectedPromptTemplateId.value })
     failAnalysisProgress(error.message || '自选股分析失败，请查看浏览器控制台和后端日志')
