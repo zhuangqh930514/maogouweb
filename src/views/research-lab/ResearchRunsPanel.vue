@@ -237,6 +237,7 @@ const runColumns = Object.freeze([
   { key: 'successCount', label: '成功数', width: 82 },
   { key: 'failedCount', label: '失败数', width: 82 },
   { key: 'retryCount', label: '重试', width: 72 },
+  { key: 'errorMessage', label: '具体原因', minWidth: 360, kind: 'message' },
   { key: 'startedAt', label: '开始时间', minWidth: 164 },
   { key: 'finishedAt', label: '结束时间', minWidth: 164 },
 ])

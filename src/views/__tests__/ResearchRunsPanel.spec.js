@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ResearchRunsPanel from '../research-lab/ResearchRunsPanel.vue'
+import ResearchEvidenceTable from '../research-lab/ResearchEvidenceTable.vue'
 import { pollPipelineRun, runResearchAction } from '../../services/researchLab'
 
 vi.mock('../../services/researchLab', () => ({
@@ -44,6 +45,18 @@ describe('ResearchRunsPanel', () => {
       historyStockCount: 240,
     }))
     expect(ElMessage.success).toHaveBeenCalledWith('历史训练已提交，可在全局流水线记录中查看进度')
+  })
+
+  it('shows the concrete pipeline error reason in the run table', async () => {
+    const wrapper = mount(ResearchRunsPanel, { props: { canOperate: true } })
+    await flushPromises()
+
+    const table = wrapper.findComponent(ResearchEvidenceTable)
+    expect(table.props('columns')).toContainEqual(expect.objectContaining({
+      key: 'errorMessage',
+      label: '具体原因',
+      kind: 'message',
+    }))
   })
 
   it('shows skipped operations as warnings instead of successes', async () => {

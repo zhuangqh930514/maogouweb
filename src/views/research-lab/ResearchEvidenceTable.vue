@@ -86,7 +86,15 @@
           >
             {{ confidenceLabel(scope?.row?.fields?.[column.key]) }}
           </el-tag>
-          <span v-else :class="{ mono: column.mono }">
+          <el-tooltip
+            v-if="column.kind === 'message' && scope?.row?.fields?.[column.key]"
+            :content="formatCell(column, scope?.row?.fields?.[column.key])"
+            placement="top"
+            :show-after="250"
+          >
+            <span class="cell-message">{{ formatCell(column, scope?.row?.fields?.[column.key]) }}</span>
+          </el-tooltip>
+          <span v-else :class="{ mono: column.mono, 'cell-wrap': column.wrap }">
             {{ formatCell(column, scope?.row?.fields?.[column.key]) }}
           </span>
         </template>
@@ -322,3 +330,21 @@ function relatedItemTitle(item, index) {
 
 defineExpose({ load })
 </script>
+
+<style scoped>
+.cell-wrap {
+  display: inline-block;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.cell-message {
+  display: -webkit-box;
+  line-height: 1.45;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+</style>
