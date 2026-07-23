@@ -22,50 +22,69 @@
           <div>
             <h2 class="surface-title">涨跌分布</h2>
           </div>
+          <el-tag :type="sourceTagType(marketBreadth.sourceStatus)" effect="plain">
+            {{ sourceStatusText(marketBreadth.sourceStatus) }}
+          </el-tag>
         </div>
         <div v-loading="marketLoading" class="surface-body breadth-panel">
-          <div class="breadth-bars">
-            <div
-              v-for="bucket in marketBreadth.buckets"
-              :key="`${bucket.direction}-${bucket.label}`"
-              class="breadth-bucket"
-            >
-              <strong :class="bucket.direction">{{ bucket.count }}</strong>
-              <div class="bar-wrap">
-                <span
-                  class="bar"
-                  :class="bucket.direction"
-                  :style="{ height: `${barHeight(bucket.count)}px` }"
-                ></span>
+          <el-alert
+            v-if="marketBreadth.sourceStatus === 'UNAVAILABLE' && !marketLoading"
+            type="error"
+            :title="sourceMessage(marketBreadth, '涨跌分布数据源异常，暂不展示数据')"
+            show-icon
+            :closable="false"
+          />
+          <template v-else>
+            <el-alert
+              v-if="marketBreadth.sourceStatus === 'STALE'"
+              type="warning"
+              :title="sourceMessage(marketBreadth, '涨跌分布为上次成功数据，当前不是实时数据')"
+              show-icon
+              :closable="false"
+            />
+            <div class="breadth-bars">
+              <div
+                v-for="bucket in marketBreadth.buckets"
+                :key="`${bucket.direction}-${bucket.label}`"
+                class="breadth-bucket"
+              >
+                <strong :class="bucket.direction">{{ bucket.count }}</strong>
+                <div class="bar-wrap">
+                  <span
+                    class="bar"
+                    :class="bucket.direction"
+                    :style="{ height: `${barHeight(bucket.count)}px` }"
+                  ></span>
+                </div>
+                <em>{{ bucket.label }}</em>
               </div>
-              <em>{{ bucket.label }}</em>
             </div>
-          </div>
 
-          <div class="breadth-summary">
-            <span>涨跌</span>
-            <strong class="down">跌 {{ marketBreadth.downCount }} 家</strong>
-            <strong class="up">涨 {{ marketBreadth.upCount }} 家</strong>
-            <strong class="flat">平 {{ marketBreadth.flatCount }} 家</strong>
-            <strong class="up">涨停 {{ marketBreadth.limitUpCount }} 家</strong>
-            <strong class="down">跌停 {{ marketBreadth.limitDownCount }} 家</strong>
-          </div>
-          <div class="breadth-ratio">
-            <span class="down" :style="{ flex: marketBreadth.downCount || 1 }"></span>
-            <span class="flat" :style="{ flex: marketBreadth.flatCount || 1 }"></span>
-            <span class="up" :style="{ flex: marketBreadth.upCount || 1 }"></span>
-          </div>
+            <div class="breadth-summary">
+              <span>涨跌</span>
+              <strong class="down">跌 {{ marketBreadth.downCount }} 家</strong>
+              <strong class="up">涨 {{ marketBreadth.upCount }} 家</strong>
+              <strong class="flat">平 {{ marketBreadth.flatCount }} 家</strong>
+              <strong class="up">涨停 {{ marketBreadth.limitUpCount }} 家</strong>
+              <strong class="down">跌停 {{ marketBreadth.limitDownCount }} 家</strong>
+            </div>
+            <div class="breadth-ratio">
+              <span class="down" :style="{ flex: marketBreadth.downCount || 1 }"></span>
+              <span class="flat" :style="{ flex: marketBreadth.flatCount || 1 }"></span>
+              <span class="up" :style="{ flex: marketBreadth.upCount || 1 }"></span>
+            </div>
 
-          <div class="breadth-summary funds">
-            <span>暗盘资金</span>
-            <strong class="down">净流出 {{ marketBreadth.fundOutCount }} 家</strong>
-            <strong class="up">净流入 {{ marketBreadth.fundInCount }} 家</strong>
-          </div>
-          <div class="breadth-ratio">
-            <span class="down" :style="{ flex: marketBreadth.fundOutCount || 1 }"></span>
-            <span class="flat" :style="{ flex: marketBreadth.fundFlatCount || 1 }"></span>
-            <span class="up" :style="{ flex: marketBreadth.fundInCount || 1 }"></span>
-          </div>
+            <div class="breadth-summary funds">
+              <span>暗盘资金</span>
+              <strong class="down">净流出 {{ marketBreadth.fundOutCount }} 家</strong>
+              <strong class="up">净流入 {{ marketBreadth.fundInCount }} 家</strong>
+            </div>
+            <div class="breadth-ratio">
+              <span class="down" :style="{ flex: marketBreadth.fundOutCount || 1 }"></span>
+              <span class="flat" :style="{ flex: marketBreadth.fundFlatCount || 1 }"></span>
+              <span class="up" :style="{ flex: marketBreadth.fundInCount || 1 }"></span>
+            </div>
+          </template>
         </div>
       </section>
 
@@ -305,6 +324,11 @@ function emptyBreadth() {
     fundInCount: 0,
     fundOutCount: 0,
     fundFlatCount: 0,
+    sourceStatus: 'UNAVAILABLE',
+    source: 'EASTMONEY',
+    sourceUpdatedAt: '',
+    servedAt: '',
+    message: '涨跌分布数据正在加载',
   }
 }
 
@@ -324,6 +348,11 @@ function normalizeBreadth(value) {
     fundInCount: Number(value?.fundInCount || 0),
     fundOutCount: Number(value?.fundOutCount || 0),
     fundFlatCount: Number(value?.fundFlatCount || 0),
+    sourceStatus: String(value?.sourceStatus || 'UNAVAILABLE').toUpperCase(),
+    source: value?.source || 'EASTMONEY',
+    sourceUpdatedAt: value?.sourceUpdatedAt || value?.updatedAt || '',
+    servedAt: value?.servedAt || '',
+    message: value?.message || '涨跌分布数据暂不可用',
   }
 }
 
