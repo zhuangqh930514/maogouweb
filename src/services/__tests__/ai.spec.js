@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { request } from '../http'
-import { fetchAiReport, fetchAiReportPage, fetchLatestAiReport } from '../ai'
+import {
+  analyzeWatchlist,
+  fetchAiReport,
+  fetchAiReportPage,
+  fetchCurrentWatchlistAnalysisJob,
+  fetchLatestAiReport,
+  fetchWatchlistAnalysisJob,
+} from '../ai'
 
 vi.mock('../http', () => ({ request: vi.fn() }))
 
@@ -36,5 +43,18 @@ describe('AI report service', () => {
 
     expect(request).toHaveBeenNthCalledWith(1, '/api/ai/reports/42')
     expect(request).toHaveBeenNthCalledWith(2, '/api/ai/reports/latest?code=600519')
+  })
+
+  it('submits and polls a persistent watchlist analysis job', async () => {
+    await analyzeWatchlist(12)
+    await fetchCurrentWatchlistAnalysisJob()
+    await fetchWatchlistAnalysisJob(88)
+
+    expect(request).toHaveBeenNthCalledWith(1, '/api/ai/analyze-watchlist', {
+      method: 'POST',
+      body: { promptTemplateId: 12 },
+    })
+    expect(request).toHaveBeenNthCalledWith(2, '/api/ai/analyze-watchlist/jobs/current')
+    expect(request).toHaveBeenNthCalledWith(3, '/api/ai/analyze-watchlist/jobs/88')
   })
 })

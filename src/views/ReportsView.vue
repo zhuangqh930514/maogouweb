@@ -52,6 +52,10 @@
           striped
           striped-flow
         />
+        <details v-if="analysisProgress.details" class="analysis-progress-details">
+          <summary>查看跳过或失败明细</summary>
+          <pre>{{ analysisProgress.details }}</pre>
+        </details>
       </div>
       <div class="report-query-bar">
         <div class="report-date-controls">
@@ -212,7 +216,16 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Cpu, Refresh } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
 import ConditionalTradeStrategy from '../components/ConditionalTradeStrategy.vue'
-import { analyzeStock, analyzeWatchlist, deleteAiReports, fetchAiReport, fetchAiReportPage, fetchAiReports } from '../services/ai'
+import {
+  analyzeStock,
+  analyzeWatchlist,
+  deleteAiReports,
+  fetchAiReport,
+  fetchAiReportPage,
+  fetchAiReports,
+  fetchCurrentWatchlistAnalysisJob,
+  fetchWatchlistAnalysisJob,
+} from '../services/ai'
 import { fetchModelConfig, fetchPromptTemplates } from '../services/settings'
 import { searchStocks } from '../services/stocks'
 import { localizeStatusText, statusLabel } from '../utils/statusLabels'
@@ -259,9 +272,14 @@ const analysisProgress = reactive({
   status: undefined,
   title: '',
   message: '',
+  details: '',
 })
 let analysisProgressTimer = null
+let watchlistJobPollTimer = null
+let activeWatchlistJobId = null
+let finalizedWatchlistJobId = null
 let detailRequestToken = 0
+const WATCHLIST_JOB_POLL_MS = 2000
 
 const normalizedSelectedReport = computed(() => {
   if (!selected.value) {
@@ -447,6 +465,7 @@ function beginAnalysisProgress(title) {
     status: undefined,
     title,
     message: '正在校验实时行情、最新K线和资讯新鲜度...',
+    details: '',
   })
   analysisProgressTimer = window.setInterval(() => {
     if (!analysisProgress.visible || analysisProgress.percent >= 92) {
@@ -468,6 +487,7 @@ function completeAnalysisProgress(message) {
     percent: 100,
     status: 'success',
     message,
+    details: '',
   })
   window.setTimeout(() => {
     if (analysisProgress.status === 'success') {
@@ -483,6 +503,7 @@ function failAnalysisProgress(message) {
     percent: 100,
     status: 'exception',
     message,
+    details: '',
   })
 }
 
@@ -968,32 +989,147 @@ async function runSingleStockAnalysis() {
 }
 
 async function runWatchlistAnalysis() {
+  if (analyzing.value) {
+    return
+  }
   analyzing.value = true
-  beginAnalysisProgress('正在分析自选股')
+  stopAnalysisProgressTimer()
+  Object.assign(analysisProgress, {
+    visible: true,
+    percent: 1,
+    status: undefined,
+    title: '正在提交自选股后台分析任务',
+    message: '任务提交后可离开本页，返回时会自动恢复真实进度',
+    details: '',
+  })
   try {
-    const result = await analyzeWatchlist(selectedPromptTemplateId.value)
-    filter.value = 'ALL'
-    reportDate.value = localDateKey(new Date())
-    dateShortcut.value = 'TODAY'
-    reportPage.value = 1
-    selectedIds.value = []
-    await loadReports()
-    const analyzedCount = Number(result?.analyzedCount || 0)
-    const skippedCount = Number(result?.skippedCount || result?.skippedStocks?.length || 0)
-    if (skippedCount > 0) {
-      const reason = result?.skippedStocks?.[0]?.reason || '部分股票暂不具备正式研究样本'
-      completeAnalysisProgress(`已完成 ${analyzedCount} 只自选股分析，${skippedCount} 只等待收盘样本`)
-      ElMessage.warning(`已分析 ${analyzedCount} 只；${skippedCount} 只暂未分析：${reason}`)
+    const job = await analyzeWatchlist(selectedPromptTemplateId.value)
+    if (!job?.id) {
+      throw new Error('后台未返回任务 ID，本次分析未启动')
+    }
+    activeWatchlistJobId = job.id
+    finalizedWatchlistJobId = null
+    applyWatchlistJobProgress(job)
+    if (isWatchlistJobTerminal(job)) {
+      await finalizeWatchlistJob(job)
       return
     }
-    completeAnalysisProgress(`已完成 ${analyzedCount} 只自选股分析，并刷新报告列表`)
-    ElMessage.success(`已完成 ${analyzedCount} 只自选股分析`)
+    scheduleWatchlistJobPoll(job.id)
   } catch (error) {
     logAnalysisError('自选股分析', error, { promptTemplateId: selectedPromptTemplateId.value })
+    clearWatchlistJobPollTimer()
+    activeWatchlistJobId = null
+    analyzing.value = false
     failAnalysisProgress(error.message || '自选股分析失败，请查看浏览器控制台和后端日志')
     ElMessage.error(error.message || '触发分析失败')
-  } finally {
-    analyzing.value = false
+  }
+}
+
+function isWatchlistJobTerminal(job) {
+  return job?.terminal === true || ['SUCCESS', 'PARTIAL', 'FAILED'].includes(job?.status)
+}
+
+function applyWatchlistJobProgress(job) {
+  const total = Number(job?.totalCount || 0)
+  const completed = Number(job?.completedCount || 0)
+  const analyzedCount = Number(job?.analyzedCount || 0)
+  const skippedCount = Number(job?.skippedCount || 0)
+  const failedCount = Number(job?.failedCount || 0)
+  const terminal = isWatchlistJobTerminal(job)
+  const currentStock = [job?.currentStockName, job?.currentStockCode].filter(Boolean).join(' ')
+  let message = job?.message || `已处理 ${completed}/${total} 只`
+  if (!terminal && currentStock) {
+    message = `${message}；当前：${currentStock}`
+  }
+  if (terminal) {
+    message = `${message}（成功 ${analyzedCount}，跳过 ${skippedCount}，失败 ${failedCount}）`
+  }
+  Object.assign(analysisProgress, {
+    visible: true,
+    percent: Math.max(0, Math.min(100, Number(job?.progressPercent || 0))),
+    status: job?.status === 'SUCCESS' ? 'success' : job?.status === 'FAILED' ? 'exception' : job?.status === 'PARTIAL' ? 'warning' : undefined,
+    title: terminal ? '自选股后台分析已结束' : '正在后台分析自选股',
+    message,
+    details: job?.issueDetails || job?.lastError || '',
+  })
+  analyzing.value = !terminal
+}
+
+function scheduleWatchlistJobPoll(jobId, delay = WATCHLIST_JOB_POLL_MS) {
+  clearWatchlistJobPollTimer()
+  watchlistJobPollTimer = window.setTimeout(() => {
+    pollWatchlistJob(jobId)
+  }, delay)
+}
+
+async function pollWatchlistJob(jobId) {
+  if (!jobId || activeWatchlistJobId !== jobId) {
+    return
+  }
+  try {
+    const job = await fetchWatchlistAnalysisJob(jobId)
+    applyWatchlistJobProgress(job)
+    if (isWatchlistJobTerminal(job)) {
+      await finalizeWatchlistJob(job)
+      return
+    }
+    scheduleWatchlistJobPoll(jobId)
+  } catch (error) {
+    logAnalysisError('查询自选股分析进度', error, { jobId })
+    analysisProgress.message = `进度查询暂时失败：${error.message || '网络异常'}；后台任务不受影响，正在重试`
+    scheduleWatchlistJobPoll(jobId, 5000)
+  }
+}
+
+async function finalizeWatchlistJob(job) {
+  if (!job?.id || finalizedWatchlistJobId === job.id) {
+    return
+  }
+  finalizedWatchlistJobId = job.id
+  activeWatchlistJobId = null
+  clearWatchlistJobPollTimer()
+  analyzing.value = false
+  applyWatchlistJobProgress(job)
+  filter.value = 'ALL'
+  reportDate.value = ''
+  dateShortcut.value = 'LATEST'
+  reportPage.value = 1
+  selectedIds.value = []
+  await loadReports()
+  const successCount = Number(job?.analyzedCount || 0)
+  const skippedCount = Number(job?.skippedCount || 0)
+  const failedCount = Number(job?.failedCount || 0)
+  if (job.status === 'SUCCESS') {
+    ElMessage.success(`自选股分析完成，成功生成 ${successCount} 份报告`)
+    return
+  }
+  const summary = `成功 ${successCount} 只，跳过 ${skippedCount} 只，失败 ${failedCount} 只`
+  if (job.status === 'PARTIAL') {
+    ElMessage.warning(`自选股分析部分完成：${summary}`)
+    return
+  }
+  ElMessage.error(job?.lastError || `自选股分析失败：${summary}`)
+}
+
+async function restoreWatchlistAnalysisJob() {
+  try {
+    const job = await fetchCurrentWatchlistAnalysisJob()
+    if (!job?.id || isWatchlistJobTerminal(job)) {
+      return
+    }
+    activeWatchlistJobId = job.id
+    finalizedWatchlistJobId = null
+    applyWatchlistJobProgress(job)
+    scheduleWatchlistJobPoll(job.id)
+  } catch (error) {
+    logAnalysisError('恢复自选股分析任务', error)
+  }
+}
+
+function clearWatchlistJobPollTimer() {
+  if (watchlistJobPollTimer) {
+    window.clearTimeout(watchlistJobPollTimer)
+    watchlistJobPollTimer = null
   }
 }
 
@@ -1046,6 +1182,7 @@ onMounted(async () => {
     loadCurrentModelConfig(),
   ])
   await syncRouteSelection()
+  await restoreWatchlistAnalysisJob()
 })
 
 watch(
@@ -1060,6 +1197,8 @@ watch(
 
 onUnmounted(() => {
   stopAnalysisProgressTimer()
+  clearWatchlistJobPollTimer()
+  activeWatchlistJobId = null
 })
 </script>
 
@@ -1084,6 +1223,28 @@ onUnmounted(() => {
 .analysis-progress {
   border-top: 1px solid #e5e7eb;
   padding: 14px 30px 18px;
+}
+
+.analysis-progress-details {
+  margin-top: 10px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.analysis-progress-details summary {
+  width: fit-content;
+  cursor: pointer;
+  color: #2563eb;
+}
+
+.analysis-progress-details pre {
+  max-height: 180px;
+  margin: 8px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  font-family: inherit;
 }
 
 .analysis-progress-meta {

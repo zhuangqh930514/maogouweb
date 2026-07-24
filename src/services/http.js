@@ -60,6 +60,23 @@ async function readPayload(response) {
   try {
     return JSON.parse(text)
   } catch {
-    return { code: -1, message: text }
+    return { code: -1, message: readableHttpFailure(response.status, text) }
   }
+}
+
+function readableHttpFailure(status, text) {
+  const statusMessages = {
+    502: '服务网关暂时无法连接后端，请稍后重试',
+    503: '后端服务暂时不可用，请稍后重试',
+    504: '请求处理超过网关等待时间；若刚提交的是分析任务，任务可能仍在后台运行，请查看任务进度',
+  }
+  if (statusMessages[status]) {
+    return statusMessages[status]
+  }
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim()
+  const looksLikeHtml = /<!doctype|<html|<head|<body|<title|<center/i.test(normalized)
+  if (!looksLikeHtml && normalized && normalized.length <= 300) {
+    return normalized
+  }
+  return `请求失败（HTTP ${status || '未知状态'}）`
 }

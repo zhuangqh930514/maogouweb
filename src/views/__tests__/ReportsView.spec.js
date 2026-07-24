@@ -1,8 +1,13 @@
 import { defineComponent } from 'vue'
 import { flushPromises, shallowMount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ReportsView from '../ReportsView.vue'
-import { fetchAiReport, fetchAiReportPage } from '../../services/ai'
+import {
+  analyzeWatchlist,
+  fetchAiReport,
+  fetchAiReportPage,
+  fetchCurrentWatchlistAnalysisJob,
+} from '../../services/ai'
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ query: {} }),
@@ -15,6 +20,8 @@ vi.mock('../../services/ai', () => ({
   fetchAiReport: vi.fn(),
   fetchAiReportPage: vi.fn(),
   fetchAiReports: vi.fn().mockResolvedValue([]),
+  fetchCurrentWatchlistAnalysisJob: vi.fn().mockResolvedValue(null),
+  fetchWatchlistAnalysisJob: vi.fn(),
 }))
 
 vi.mock('../../services/settings', () => ({
@@ -57,6 +64,10 @@ const DatePickerStub = defineComponent({
 
 const EmptyStub = defineComponent({ template: '<div />' })
 const SlotStub = defineComponent({ template: '<span><slot /></span>' })
+const ButtonStub = defineComponent({
+  emits: ['click'],
+  template: '<button @click="$emit(\'click\')"><slot /></button>',
+})
 
 function report(id = 1) {
   return {
@@ -93,7 +104,7 @@ async function mountView() {
         'el-autocomplete': EmptyStub,
         'el-option': EmptyStub,
         'el-select': EmptyStub,
-        'el-button': EmptyStub,
+        'el-button': ButtonStub,
         'el-progress': EmptyStub,
         'el-date-picker': DatePickerStub,
         'el-checkbox': EmptyStub,
@@ -110,6 +121,7 @@ async function mountView() {
 describe('ReportsView pagination and date filters', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    fetchCurrentWatchlistAnalysisJob.mockResolvedValue(null)
     fetchAiReportPage.mockResolvedValue(page())
     fetchAiReport.mockImplementation(async (id) => ({
       ...report(id),
@@ -117,6 +129,10 @@ describe('ReportsView pagination and date filters', () => {
       riskWarning: '风险详情',
       buySellPoints: '买卖点详情',
     }))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('opens on the latest day that actually has report data', async () => {
@@ -184,5 +200,33 @@ describe('ReportsView pagination and date filters', () => {
       date: '2026-07-12',
       filter: 'ALL',
     })
+  })
+
+  it('submits watchlist analysis as a background job and renders persisted progress', async () => {
+    vi.useFakeTimers()
+    analyzeWatchlist.mockResolvedValue({
+      id: 88,
+      status: 'RUNNING',
+      terminal: false,
+      totalCount: 9,
+      completedCount: 2,
+      analyzedCount: 2,
+      skippedCount: 0,
+      failedCount: 0,
+      currentStockName: '贵州茅台',
+      currentStockCode: '600519',
+      progressPercent: 22,
+      message: '正在分析贵州茅台',
+    })
+    const wrapper = await mountView()
+
+    const button = wrapper.findAll('button').find((item) => item.text().includes('立即分析自选股'))
+    await button.trigger('click')
+    await flushPromises()
+
+    expect(analyzeWatchlist).toHaveBeenCalledWith(null)
+    expect(wrapper.text()).toContain('正在后台分析自选股')
+    expect(wrapper.text()).toContain('贵州茅台 600519')
+    wrapper.unmount()
   })
 })

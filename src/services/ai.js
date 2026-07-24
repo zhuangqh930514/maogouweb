@@ -32,6 +32,14 @@ export function analyzeWatchlist(promptTemplateId) {
   })
 }
 
+export function fetchCurrentWatchlistAnalysisJob() {
+  return request('/api/ai/analyze-watchlist/jobs/current')
+}
+
+export function fetchWatchlistAnalysisJob(jobId) {
+  return request(`/api/ai/analyze-watchlist/jobs/${jobId}`)
+}
+
 export function deleteAiReports(ids) {
   return request('/api/ai/reports/batch-delete', {
     method: 'POST',
