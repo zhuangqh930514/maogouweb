@@ -82,6 +82,9 @@ describe('ConditionalTradeStrategy', () => {
           status: 'VERIFIED',
           triggeredState: '强势上涨',
           postTriggerReturn: 1.2,
+          netActionReturn: 1.0,
+          excessReturn: 0.3,
+          transactionCostBps: 20,
           reviewScore: 72,
           feedbackSummary: '动作在下一交易日验证有效',
         }],
@@ -107,6 +110,8 @@ describe('ConditionalTradeStrategy', () => {
     expect(wrapper.text()).toContain('动作 买入')
     expect(wrapper.text()).toContain('技术止损')
     expect(wrapper.text()).toContain('动作在下一交易日验证有效')
+    expect(wrapper.text()).toContain('策略净收益')
+    expect(wrapper.text()).toContain('相对基准')
     expect(wrapper.text()).toContain('资金流向未接入可靠时点源')
   })
 })

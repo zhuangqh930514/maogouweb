@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ResearchLabView from '../research-lab/ResearchLabView.vue'
-import { fetchResearchOverview } from '../../services/researchLab'
+import { fetchResearchOperationsOverview, fetchResearchOverview } from '../../services/researchLab'
 import { fetchCurrentUser, getStoredUser } from '../../services/auth'
 
 const route = { query: {} }
@@ -14,6 +14,7 @@ vi.mock('vue-router', () => ({
 vi.mock('../../services/auth', () => ({ fetchCurrentUser: vi.fn(), getStoredUser: vi.fn() }))
 vi.mock('../../services/researchLab', () => ({
   fetchResearchOverview: vi.fn(),
+  fetchResearchOperationsOverview: vi.fn(),
   fetchPipelineRun: vi.fn(),
   fetchPipelineRuns: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 }),
 }))
@@ -73,5 +74,32 @@ describe('ResearchLabView', () => {
 
     expect(wrapper.text()).toContain('运行全局日度研究')
     expect(wrapper.text()).toContain('导入历史数据并初始化')
+  })
+
+  it('shows operations evidence only to an authenticated operator', async () => {
+    route.query = { tab: 'operations' }
+    fetchCurrentUser.mockResolvedValue({ id: 8, username: 'operator', systemRole: 'OPERATOR' })
+    fetchResearchOperationsOverview.mockResolvedValue({
+      generatedAt: '2026-07-25T16:30:00',
+      tradeDate: '2026-07-24',
+      windowDays: 14,
+      tasks: { totalRuns: 1, statusCounts: { SUCCESS: 1 }, staleRunningCount: 0 },
+      sources: { providers: [], coverage: [] },
+      modelFailures: { totalFailures: 0, groupedCounts: {}, recentFailures: [] },
+      dailyReports: { eligibleUserCount: 1, reportReadyUserCount: 1, missingReportUserCount: 0, missingUsers: [], consecutiveMissingUsers: [] },
+      holdings: { activeHoldingCount: 0, withoutDailyConclusionCount: 0, gaps: [] },
+      decisionConflicts: { conflictCount: 0, withoutReportCount: 0, conflicts: [] },
+      universePollution: { issueCount: 0, items: [] },
+      universeLineage: { recordedCount: 0, invalidCount: 0, items: [] },
+      alerts: [],
+    })
+    const wrapper = mount(ResearchLabView, {
+      global: { directives: { loading: () => {} } },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('运行与告警')
+    expect(wrapper.text()).toContain('待处理告警')
+    expect(fetchResearchOperationsOverview).toHaveBeenCalledWith(14)
   })
 })

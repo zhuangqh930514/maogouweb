@@ -92,6 +92,8 @@
       </div>
     </section>
 
+    <ResearchConditionalRulePanel v-else-if="activeKey === 'conditional-rules'" :can-operate="canOperate" />
+
     <ResearchEvidenceTable
       v-else-if="activeKey === 'shadow'"
       title="影子策略评估"
@@ -181,12 +183,14 @@ import {
 } from '../../services/researchLab'
 import { statusLabel } from '../../utils/statusLabels'
 import ResearchEvidenceTable from './ResearchEvidenceTable.vue'
+import ResearchConditionalRulePanel from './ResearchConditionalRulePanel.vue'
 import { formatResearchValue, statusTagType } from './researchPresentation'
 
 const props = defineProps({ canOperate: Boolean })
 const tabs = Object.freeze([
   { key: 'strategies', label: '策略版本' },
   { key: 'shadow', label: '影子评估' },
+  { key: 'conditional-rules', label: '条件规则' },
   { key: 'events', label: '治理记录' },
 ])
 const shadowStatusOptions = Object.freeze([

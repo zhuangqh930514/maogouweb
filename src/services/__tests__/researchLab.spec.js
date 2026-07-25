@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  fetchResearchOperationsOverview,
   fetchResearchSamples,
   importTrainingDatasetPackage,
   pollPipelineRun,
@@ -44,6 +45,14 @@ describe('researchLab service', () => {
       method: 'POST',
       body: { tradeDate: '2026-07-14' },
     })
+  })
+
+  it('loads the operator-only operations overview with a bounded observation window', async () => {
+    request.mockResolvedValue({ alerts: [] })
+
+    await fetchResearchOperationsOverview(999)
+
+    expect(request).toHaveBeenCalledWith('/api/ai/research-lab/operations-overview?windowDays=90')
   })
 
   it('stops polling when a training run is blocked by insufficient data', async () => {

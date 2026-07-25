@@ -22,4 +22,13 @@ describe('unified AI research routes', () => {
 
     expect(router.currentRoute.value.path).toBe('/research-daily-reports')
   })
+
+  it('keeps research operation routes behind explicit advanced mode', async () => {
+    const { default: router } = await import('../index')
+
+    await router.push('/research-lab')
+    await router.isReady()
+
+    expect(router.currentRoute.value.path).toBe('/research-daily-reports')
+  })
 })

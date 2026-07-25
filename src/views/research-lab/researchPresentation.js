@@ -241,9 +241,9 @@ export function formatRatio(value) {
 
 export function statusTagType(value) {
   const status = String(value || '').toUpperCase()
-  if (['SUCCESS', 'READY', 'ACTIVE', 'MATURED', 'TRADABLE', 'HEALTHY', 'PROMOTED', 'VALIDATED'].includes(status)) return 'success'
-  if (['FAILED', 'CRITICAL', 'UNAVAILABLE', 'REJECTED', 'ROLLED_BACK', 'HIGH', 'UNFILLED'].includes(status)) return 'danger'
-  if (['PARTIAL_SUCCESS', 'PARTIAL_READY', 'WAITING_SOURCE', 'WARNING', 'STALE', 'INSUFFICIENT_DATA', 'SHADOW'].includes(status)) return 'warning'
+  if (['SUCCESS', 'READY', 'ACTIVE', 'MATURED', 'TRADABLE', 'HEALTHY', 'PROMOTED', 'VALIDATED', 'WALK_FORWARD_PASSED'].includes(status)) return 'success'
+  if (['FAILED', 'FAILED_FINAL', 'CRITICAL', 'UNAVAILABLE', 'REJECTED', 'ROLLED_BACK', 'HIGH', 'UNFILLED', 'WALK_FORWARD_REJECTED', 'SHADOW_REJECTED'].includes(status)) return 'danger'
+  if (['FAILED_RECOVERABLE', 'PARTIAL_SUCCESS', 'PARTIAL_READY', 'WAITING_SOURCE', 'WARNING', 'STALE', 'INSUFFICIENT_DATA', 'SHADOW', 'WALK_FORWARD_INSUFFICIENT_DATA', 'SHADOW_INSUFFICIENT_DATA', 'READY_FOR_REVIEW'].includes(status)) return 'warning'
   return 'info'
 }
 

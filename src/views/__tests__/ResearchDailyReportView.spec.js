@@ -2,19 +2,30 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ResearchDailyReportView from '../ResearchDailyReportView.vue'
 import {
-  fetchLatestResearchDailyReport,
-  fetchResearchDailyReports,
+  fetchResearchDailyReportHistory,
+  fetchResearchDailyReportOverview,
 } from '../../services/researchDailyReport'
+
+const storage = new Map()
+
+function setAdvancedMode(enabled) {
+  if (enabled) storage.set('maogou_advanced_mode', 'true')
+  else storage.delete('maogou_advanced_mode')
+}
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
+  useRoute: () => ({ query: {} }),
 }))
 
 vi.mock('../../services/researchDailyReport', () => ({
-  fetchLatestResearchDailyReport: vi.fn(),
+  fetchResearchDailyReportOverview: vi.fn(),
+  fetchResearchDailyReportHistory: vi.fn(),
   fetchResearchDailyReportDetail: vi.fn(),
-  fetchResearchDailyReports: vi.fn(),
+  fetchResearchDailyReportItems: vi.fn(),
+  fetchResearchDailyReportFeedback: vi.fn().mockResolvedValue([]),
   rebuildResearchDailyReport: vi.fn(),
+  submitResearchDailyReportFeedback: vi.fn(),
 }))
 
 function report(overrides = {}) {
@@ -77,8 +88,19 @@ function report(overrides = {}) {
 }
 
 async function mountView(latest, history = latest ? [latest] : []) {
-  fetchLatestResearchDailyReport.mockResolvedValue(latest)
-  fetchResearchDailyReports.mockResolvedValue(history)
+  fetchResearchDailyReportOverview.mockResolvedValue({
+    report: latest,
+    history,
+    dailyChanges: [],
+    nextAutoRunAt: '2026-07-11T16:00:00',
+  })
+  fetchResearchDailyReportHistory.mockResolvedValue({
+    items: history,
+    total: history.length,
+    page: 1,
+    pageSize: 10,
+    totalPages: history.length ? 1 : 0,
+  })
   const wrapper = mount(ResearchDailyReportView, {
     global: {
       stubs: {
@@ -100,6 +122,13 @@ async function mountView(latest, history = latest ? [latest] : []) {
 describe('ResearchDailyReportView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    storage.clear()
+    setAdvancedMode(true)
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => storage.get(key) || null,
+      setItem: (key, value) => storage.set(key, String(value)),
+      removeItem: (key) => storage.delete(key),
+    })
   })
 
   it('renders a successful report with its recommendation', async () => {
@@ -108,6 +137,15 @@ describe('ResearchDailyReportView', () => {
     expect(wrapper.text()).toContain('今日结论')
     expect(wrapper.text()).toContain('就绪')
     expect(wrapper.text()).toContain('贵州茅台')
+  })
+
+  it('shows the next automatic run while keeping technical controls out of normal mode', async () => {
+    setAdvancedMode(false)
+    const wrapper = await mountView(report())
+
+    expect(wrapper.text()).toContain('下一次自动运行')
+    expect(wrapper.text()).toContain('2026-07-11 16:00:00')
+    expect(wrapper.text()).not.toContain('从当前快照重建日报')
   })
 
   it('renders the stock name already hydrated by the daily report API', async () => {

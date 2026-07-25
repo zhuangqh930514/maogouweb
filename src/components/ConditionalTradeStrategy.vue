@@ -157,7 +157,7 @@
       <section class="model-group buy-group">
         <div class="section-heading compact">
           <div>
-            <span>ENTRY MODELS</span>
+            <span>买入条件</span>
             <h4>买点模型</h4>
           </div>
         </div>
@@ -167,7 +167,7 @@
       <section class="model-group sell-group">
         <div class="section-heading compact">
           <div>
-            <span>EXIT MODELS</span>
+            <span>卖出条件</span>
             <h4>卖点模型</h4>
           </div>
         </div>
@@ -178,7 +178,7 @@
     <section v-if="reviews?.length" class="review-section">
       <div class="section-heading compact">
         <div>
-          <span>LEARNING FEEDBACK</span>
+          <span>复盘学习</span>
           <h4>条件策略复盘</h4>
         </div>
       </div>
@@ -191,7 +191,10 @@
           <p>{{ review.feedbackSummary || `计划验证日 ${review.targetTradeDate || '-'}` }}</p>
           <dl v-if="review.status === 'VERIFIED'">
             <div><dt>触发规则</dt><dd>{{ review.triggeredState || review.triggeredRuleCode }}</dd></div>
-            <div><dt>触发后收益</dt><dd :class="Number(review.postTriggerReturn || 0) >= 0 ? 'up' : 'down'">{{ signedPercent(review.postTriggerReturn) }}</dd></div>
+            <div><dt>标的涨跌</dt><dd :class="Number(review.postTriggerReturn || 0) >= 0 ? 'up' : 'down'">{{ signedPercent(review.postTriggerReturn) }}</dd></div>
+            <div><dt>策略净收益</dt><dd :class="Number(review.netActionReturn || 0) >= 0 ? 'up' : 'down'">{{ signedPercent(review.netActionReturn) }}</dd></div>
+            <div v-if="review.excessReturn != null"><dt>相对基准</dt><dd :class="Number(review.excessReturn) >= 0 ? 'up' : 'down'">{{ signedPercent(review.excessReturn) }}</dd></div>
+            <div v-if="review.transactionCostBps != null"><dt>估算成本</dt><dd>{{ numberValue(review.transactionCostBps) }} bps</dd></div>
             <div><dt>复盘分</dt><dd>{{ numberValue(review.reviewScore) }}</dd></div>
           </dl>
         </div>

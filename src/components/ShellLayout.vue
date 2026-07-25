@@ -40,16 +40,19 @@
             <span>AI分析</span>
           </template>
           <el-menu-item index="/research-daily-reports">投研日报</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu v-if="advancedMode" index="advanced-research">
+          <template #title>
+            <el-icon><Document /></el-icon>
+            <span>高级工具</span>
+          </template>
           <el-menu-item index="/reports">分析报告</el-menu-item>
           <el-menu-item index="/research-lab">研究实验室</el-menu-item>
+          <el-menu-item index="/automation-tasks">自动化任务</el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/settings">
           <el-icon><Setting /></el-icon>
           <span>模型配置中心</span>
-        </el-menu-item>
-        <el-menu-item index="/automation-tasks">
-          <el-icon><Timer /></el-icon>
-          <span>自动化任务</span>
         </el-menu-item>
         <el-menu-item index="/chat">
           <el-icon><ChatLineRound /></el-icon>
@@ -79,7 +82,29 @@
           </el-select>
         </div>
         <div class="topbar-actions">
-          <el-button :icon="Setting">设置</el-button>
+          <el-dropdown trigger="click" popper-class="notification-popper" @command="handleNotificationCommand">
+            <el-badge :value="unreadNotificationCount || ''" :max="99" class="notification-badge">
+              <el-button circle :icon="Bell" aria-label="投研提醒" title="投研提醒" />
+            </el-badge>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="!notifications.length" disabled>暂无新的投研提醒</el-dropdown-item>
+                <el-dropdown-item
+                  v-for="notification in notifications"
+                  :key="notification.id"
+                  :command="notification"
+                  :class="{ 'notification-unread': !notification.read }"
+                >
+                  <div class="notification-item">
+                    <strong>{{ notification.title }}</strong>
+                    <span>{{ notification.content }}</span>
+                    <em>{{ notification.tradeDate || formatNotificationTime(notification.createdAt) }}</em>
+                  </div>
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button :icon="Setting" @click="router.push('/settings')">设置</el-button>
           <el-dropdown trigger="click" @command="handleUserCommand">
             <el-button :icon="User">{{ currentUser?.displayName || currentUser?.username || '账户' }}</el-button>
             <template #dropdown>
@@ -105,32 +130,40 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
+  Bell,
   ChatLineRound,
   DataBoard,
   Document,
   DocumentChecked,
   Setting,
   Star,
-  Timer,
   TrendCharts,
   User,
   Wallet,
 } from '@element-plus/icons-vue'
 import { fetchCurrentUser, getStoredUser, logout } from '../services/auth'
 import { fetchModelConfig } from '../services/settings'
+import { fetchNotifications, fetchUnreadNotificationCount, markNotificationRead } from '../services/notifications'
 import { ashareMarketStatus, formatDateTime, isAshareMarketOpen, isAshareTradeDay } from '../utils/marketTime'
 
 const route = useRoute()
 const router = useRouter()
 const currentUser = ref(getStoredUser())
 const modelConfig = ref(null)
+const advancedMode = ref(readAdvancedMode())
+const notifications = ref([])
+const unreadNotificationCount = ref(0)
 const now = ref(new Date())
 let clockTimer = null
+let notificationTimer = null
 
 const aiMenuPaths = [
   '/research-daily-reports',
+]
+const advancedResearchPaths = [
   '/reports',
   '/research-lab',
+  '/automation-tasks',
 ]
 const mobileNavigation = [
   { path: '/', label: '资讯首页' },
@@ -138,13 +171,14 @@ const mobileNavigation = [
   { path: '/watchlist', label: '自选股' },
   { path: '/portfolio', label: '持仓记录' },
   { path: '/research-daily-reports', label: '投研日报' },
-  { path: '/reports', label: '分析报告' },
-  { path: '/research-lab', label: '研究实验室' },
-  { path: '/automation-tasks', label: '自动化任务' },
   { path: '/settings', label: '模型配置' },
   { path: '/chat', label: '猫狗畅聊' },
 ]
-const defaultOpeneds = aiMenuPaths.includes(route.path) ? ['ai-analysis'] : []
+const defaultOpeneds = computed(() => {
+  if (aiMenuPaths.includes(route.path)) return ['ai-analysis']
+  if (advancedResearchPaths.includes(route.path)) return ['advanced-research']
+  return []
+})
 
 const modelStatusText = computed(() => {
   if (!modelConfig.value) {
@@ -166,6 +200,7 @@ onMounted(async () => {
   }, 1000)
   try {
     currentUser.value = await fetchCurrentUser()
+    advancedMode.value = readAdvancedMode()
   } catch {
     currentUser.value = getStoredUser()
   }
@@ -174,12 +209,19 @@ onMounted(async () => {
   } catch {
     modelConfig.value = null
   }
+  await loadNotifications()
+  notificationTimer = window.setInterval(loadNotifications, 60000)
+  window.addEventListener('maogou:advanced-mode', syncAdvancedMode)
 })
 
 onUnmounted(() => {
   if (clockTimer) {
     window.clearInterval(clockTimer)
   }
+  if (notificationTimer) {
+    window.clearInterval(notificationTimer)
+  }
+  window.removeEventListener('maogou:advanced-mode', syncAdvancedMode)
 })
 
 function handleUserCommand(command) {
@@ -193,6 +235,51 @@ function handleMobileNavigate(path) {
   if (path && path !== route.path) {
     router.push(path)
   }
+}
+
+async function loadNotifications() {
+  try {
+    const [items, unread] = await Promise.all([
+      fetchNotifications(12),
+      fetchUnreadNotificationCount(),
+    ])
+    notifications.value = items || []
+    unreadNotificationCount.value = Number(unread?.count || 0)
+  } catch {
+    // Notifications are supplementary. Do not disturb normal navigation when an older backend is running.
+    notifications.value = []
+    unreadNotificationCount.value = 0
+  }
+}
+
+async function handleNotificationCommand(notification) {
+  if (!notification) return
+  if (!notification.read) {
+    try {
+      await markNotificationRead(notification.id)
+      notification.read = true
+      unreadNotificationCount.value = Math.max(0, unreadNotificationCount.value - 1)
+    } catch {
+      // The notification still remains actionable even if the read receipt cannot be persisted.
+    }
+  }
+  if (notification.reportId) {
+    router.push({ path: '/research-daily-reports', query: { reportId: notification.reportId } })
+  } else {
+    router.push('/research-daily-reports')
+  }
+}
+
+function formatNotificationTime(value) {
+  return value ? String(value).replace('T', ' ').slice(0, 16) : ''
+}
+
+function readAdvancedMode() {
+  return typeof localStorage !== 'undefined' && localStorage.getItem('maogou_advanced_mode') === 'true'
+}
+
+function syncAdvancedMode() {
+  advancedMode.value = readAdvancedMode()
 }
 
 </script>
@@ -336,6 +423,48 @@ function handleMobileNavigate(path) {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.notification-badge :deep(.el-badge__content) {
+  transform: translateY(-40%) translateX(55%);
+}
+
+:global(.notification-popper) {
+  width: min(380px, calc(100vw - 32px));
+  max-width: min(380px, calc(100vw - 32px));
+}
+
+:global(.notification-popper .el-dropdown-menu__item) {
+  height: auto;
+  padding: 10px 12px;
+  white-space: normal;
+}
+
+:global(.notification-popper .notification-unread) {
+  background: #eff6ff;
+}
+
+:global(.notification-popper .notification-item) {
+  display: grid;
+  gap: 3px;
+  max-width: 340px;
+}
+
+:global(.notification-popper .notification-item strong) {
+  color: #1f2937;
+  font-size: 13px;
+}
+
+:global(.notification-popper .notification-item span) {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+:global(.notification-popper .notification-item em) {
+  color: #94a3b8;
+  font-size: 11px;
+  font-style: normal;
 }
 
 .mobile-navigation {

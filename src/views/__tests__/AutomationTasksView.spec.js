@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AutomationTasksView from '../AutomationTasksView.vue'
 import { fetchSchedulerJobLogs, fetchSchedulerStatus } from '../../services/settings'
 
@@ -23,6 +23,10 @@ describe('AutomationTasksView', () => {
     fetchSchedulerJobLogs.mockResolvedValue([])
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('shows automation health without exposing research execution controls', async () => {
     const wrapper = mount(AutomationTasksView, {
       global: { directives: { loading: () => {} } },
@@ -36,5 +40,22 @@ describe('AutomationTasksView', () => {
     expect(wrapper.text()).not.toContain('运行全局日度研究')
     expect(wrapper.text()).not.toContain('运行历史冷启动')
     expect(wrapper.text()).not.toContain('手动训练模型')
+    wrapper.unmount()
+  })
+
+  it('silently refreshes persisted pipeline status every 30 seconds', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(AutomationTasksView, {
+      global: { directives: { loading: () => {} } },
+    })
+    await flushPromises()
+    expect(fetchSchedulerStatus).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    await flushPromises()
+
+    expect(fetchSchedulerStatus).toHaveBeenCalledTimes(2)
+    expect(fetchSchedulerJobLogs).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
   })
 })

@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <section class="surface toolbar-surface">
+    <section v-if="advancedMode" class="surface toolbar-surface">
       <div class="surface-body reports-toolbar">
         <el-segmented v-model="filter" :options="reportFilterOptions" @change="handleReportFilterChange" />
         <div class="reports-toolbar-actions">
@@ -87,14 +87,15 @@
       </div>
     </section>
 
-    <div class="section-grid reports-layout">
-      <section class="surface">
+    <div class="section-grid reports-layout" :class="{ 'report-detail-layout': isDailyReportDetailMode }">
+      <section v-if="!isDailyReportDetailMode" class="surface">
         <div class="surface-header">
           <div>
             <h2 class="surface-title">报告列表</h2>
             <p class="surface-subtitle">{{ reportDate || '-' }} · 按生成时间倒序</p>
           </div>
           <el-button
+            v-if="advancedMode"
             type="danger"
             plain
             :disabled="!selectedIds.length"
@@ -115,13 +116,14 @@
             >
               <div class="report-item-main">
                 <el-checkbox
+                  v-if="advancedMode"
                   :model-value="selectedIds.includes(report.id)"
                   @click.stop
                   @change="toggleReportSelection(report.id, $event)"
                 />
                 <span class="report-item-content">
                   <strong>{{ report.stock }}</strong>
-                  <em>{{ localizeStatusText(report.advice, '暂无建议') }}</em>
+                  <em>AI 观点：{{ localizeStatusText(report.advice, '暂无建议') }}</em>
                 </span>
               </div>
               <span class="report-score" :class="report.score >= 75 ? 'up' : 'muted'">{{ report.score }}</span>
@@ -167,6 +169,26 @@
             :closable="false"
           />
           <div class="lineage-grid">
+            <div v-if="normalizedSelectedReport.dailyDecision" class="lineage-card official-decision-card">
+              <span>日报最终动作</span>
+              <strong>{{ statusLabel(normalizedSelectedReport.dailyDecision.finalAction, '观察') }} · 系统分 {{ formatLineageScore(normalizedSelectedReport.dailyDecision.systemScore) }}</strong>
+              <em>{{ localizeStatusText(normalizedSelectedReport.dailyDecision.reasonSummary, '日报最终动作优先于报告观点') }}</em>
+            </div>
+            <div v-else class="lineage-card official-decision-card muted-decision-card">
+              <span>日报最终动作</span>
+              <strong>未关联当日正式决策</strong>
+              <em>该报告仅展示 AI 报告观点，不能替代当日投研日报结论。</em>
+            </div>
+            <div class="lineage-card">
+              <span>AI 报告动作</span>
+              <strong>{{ statusLabel(normalizedSelectedReport.finalAction, '未结构化') }} · 置信度 {{ formatLineagePercent(normalizedSelectedReport.calibratedConfidence) }}</strong>
+              <em>仅在与正式样本和策略版本对齐后参与日报裁决。</em>
+            </div>
+            <div v-if="normalizedSelectedReport.dailyDecision" class="lineage-card">
+              <span>裁决规则与样本</span>
+              <strong>{{ normalizedSelectedReport.dailyDecision.decisionPolicyVersion || '未记录策略版本' }}</strong>
+              <em>数据质量 {{ formatLineagePercent(normalizedSelectedReport.dailyDecision.dataQualityScore) }} · 样本外 {{ normalizedSelectedReport.dailyDecision.outOfSampleCount || 0 }} 条 · {{ statusLabel(normalizedSelectedReport.dailyDecision.confidenceLevel, '待确认') }}</em>
+            </div>
             <div class="lineage-card">
               <span>样本 ID</span>
               <strong>{{ normalizedSelectedReport.sampleId || '-' }}</strong>
@@ -197,7 +219,7 @@
           <AiReportBlock title="风险提示" :content="normalizedSelectedReport.riskWarningDisplay" tone="yellow" />
           <AiReportBlock title="建议买卖点" :content="normalizedSelectedReport.buySellPointsDisplay" tone="green" />
           <AiReportBlock title="Prompt 数据摘要" :content="normalizedSelectedReport.promptSummaryDisplay" />
-          <div class="report-actions">
+          <div v-if="advancedMode" class="report-actions">
             <el-button :icon="Refresh" :loading="regenerating" @click="regenerateSelectedReport">重新生成</el-button>
           </div>
         </div>
@@ -263,6 +285,11 @@ const selectedPromptTemplateId = ref(null)
 const promptTemplates = ref([])
 const promptTemplatesLoading = ref(false)
 const currentModelName = ref('')
+const advancedMode = computed(() => typeof localStorage !== 'undefined'
+  && localStorage.getItem('maogou_advanced_mode') === 'true')
+const isDailyReportDetailMode = computed(() => !advancedMode.value
+  && Number.isSafeInteger(Number(route.query.reportId || 0))
+  && Number(route.query.reportId) > 0)
 const aiReports = ref([])
 const selectedIds = ref([])
 const selected = ref(null)
@@ -330,6 +357,24 @@ async function loadReports({ preferredReportId = null } = {}) {
     ElMessage.error(error.message || 'AI 报告获取失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadDailyReportLinkedDetail() {
+  const reportId = Number(route.query.reportId || 0)
+  if (!Number.isSafeInteger(reportId) || reportId <= 0) {
+    return
+  }
+  loading.value = true
+  detailLoading.value = true
+  try {
+    selected.value = await fetchAiReport(reportId)
+  } catch (error) {
+    selected.value = null
+    ElMessage.error(error.message || '关联报告加载失败')
+  } finally {
+    loading.value = false
+    detailLoading.value = false
   }
 }
 
@@ -828,6 +873,11 @@ function formatLineagePercent(value) {
   return `${(number > 1 ? number : number * 100).toFixed(1)}%`
 }
 
+function formatLineageScore(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  return Number(value).toFixed(1)
+}
+
 async function queryStockSuggestions(query, callback) {
   const keyword = query.trim()
   if (!keyword) {
@@ -1176,18 +1226,28 @@ async function regenerateSelectedReport() {
 }
 
 onMounted(async () => {
-  await Promise.all([
-    loadReports(),
-    loadPromptTemplates(),
-    loadCurrentModelConfig(),
-  ])
+  if (isDailyReportDetailMode.value) {
+    await loadDailyReportLinkedDetail()
+    return
+  }
+  const loadingTasks = [loadReports()]
+  if (advancedMode.value) {
+    loadingTasks.push(loadPromptTemplates(), loadCurrentModelConfig())
+  }
+  await Promise.all(loadingTasks)
   await syncRouteSelection()
-  await restoreWatchlistAnalysisJob()
+  if (advancedMode.value) {
+    await restoreWatchlistAnalysisJob()
+  }
 })
 
 watch(
   () => [route.query.reportId, route.query.code],
   async () => {
+    if (isDailyReportDetailMode.value) {
+      await loadDailyReportLinkedDetail()
+      return
+    }
     if (!aiReports.value.length) {
       return
     }
@@ -1338,6 +1398,10 @@ onUnmounted(() => {
   grid-template-columns: 440px minmax(0, 1fr);
 }
 
+.reports-layout.report-detail-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .report-list {
   display: flex;
   flex-direction: column;
@@ -1478,6 +1542,16 @@ onUnmounted(() => {
   color: #6b7280;
   font-style: normal;
   line-height: 1.5;
+}
+
+.muted-decision-card {
+  border-style: dashed;
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.muted-decision-card strong {
+  color: #475569;
 }
 
 .report-actions {

@@ -8,8 +8,8 @@
             <p class="surface-subtitle">模型接入、提示词模板和自动化任务是 AI 分析闭环的配置入口</p>
           </div>
           <div class="header-actions">
-            <el-button @click="router.push('/prompt-templates')">提示词管理</el-button>
-            <el-button @click="router.push('/automation-tasks')">自动化任务</el-button>
+            <el-button v-if="advancedMode" @click="router.push('/prompt-templates')">提示词管理</el-button>
+            <el-button v-if="advancedMode" @click="router.push('/automation-tasks')">自动化任务</el-button>
           </div>
         </div>
         <div v-loading="loading" class="surface-body">
@@ -60,6 +60,20 @@
         </div>
       </section>
 
+      <section class="surface advanced-mode-surface">
+        <div class="surface-header">
+          <div>
+            <h2 class="surface-title">高级研究模式</h2>
+            <p class="surface-subtitle">仅用于查看研究证据、策略治理和自动化运维，不影响每日投研自动运行。</p>
+          </div>
+          <el-switch v-model="advancedMode" @change="saveAdvancedMode" />
+        </div>
+        <div class="surface-body advanced-mode-copy">
+          <strong>{{ advancedMode ? '已显示高级工具' : '已隐藏高级工具' }}</strong>
+          <span>日常使用只需维护自选股和持仓，并在收盘后查看投研日报。高级工具不会要求你手动执行训练或分析任务。</span>
+        </div>
+      </section>
+
     </div>
 
   </div>
@@ -91,6 +105,7 @@ const loading = ref(false)
 const saving = ref(false)
 const testing = ref(false)
 const testResult = ref(null)
+const advancedMode = ref(readAdvancedMode())
 const modelPresets = [
   {
     key: 'ollama',
@@ -213,6 +228,20 @@ function inferProvider(config) {
   return 'custom'
 }
 
+function readAdvancedMode() {
+  return typeof localStorage !== 'undefined' && localStorage.getItem('maogou_advanced_mode') === 'true'
+}
+
+function saveAdvancedMode(value) {
+  if (typeof localStorage === 'undefined') {
+    ElMessage.warning('当前环境不支持保存显示偏好')
+    return
+  }
+  localStorage.setItem('maogou_advanced_mode', String(Boolean(value)))
+  window.dispatchEvent(new CustomEvent('maogou:advanced-mode'))
+  ElMessage.success(value ? '已显示高级研究工具' : '已隐藏高级研究工具')
+}
+
 onMounted(loadConfig)
 </script>
 
@@ -295,6 +324,17 @@ onMounted(loadConfig)
   padding: 14px 16px;
   color: #2563eb;
   font-weight: 700;
+}
+
+.advanced-mode-copy {
+  display: grid;
+  gap: 6px;
+  color: #475569;
+  line-height: 22px;
+}
+
+.advanced-mode-copy strong {
+  color: #1e293b;
 }
 
 </style>

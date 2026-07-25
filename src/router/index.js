@@ -24,11 +24,11 @@ const routes = [
   { path: '/portfolio', name: 'portfolio', component: PortfolioView, meta: { title: '持仓记录' } },
   { path: '/research-daily-report', redirect: '/research-daily-reports' },
   { path: '/research-daily-reports', name: 'researchDailyReports', component: ResearchDailyReportView, meta: { title: '投研日报' } },
-  { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告' } },
-  { path: '/research-lab', name: 'researchLab', component: ResearchLabView, meta: { title: '研究实验室' } },
+  { path: '/reports', name: 'reports', component: ReportsView, meta: { title: '分析报告', advanced: true } },
+  { path: '/research-lab', name: 'researchLab', component: ResearchLabView, meta: { title: '研究实验室', advanced: true } },
   { path: '/settings', name: 'settings', component: SettingsView, meta: { title: '模型配置中心' } },
-  { path: '/prompt-templates', name: 'promptTemplates', component: PromptTemplatesView, meta: { title: '提示词管理' } },
-  { path: '/automation-tasks', name: 'automationTasks', component: AutomationTasksView, meta: { title: '自动化任务' } },
+  { path: '/prompt-templates', name: 'promptTemplates', component: PromptTemplatesView, meta: { title: '提示词管理', advanced: true } },
+  { path: '/automation-tasks', name: 'automationTasks', component: AutomationTasksView, meta: { title: '自动化任务', advanced: true } },
   { path: '/chat', name: 'chat', component: ChatView, meta: { title: '猫狗投研助手' } },
 ]
 
@@ -37,6 +37,12 @@ const router = createRouter({
   routes,
 })
 
+function allowsDailyReportDetail(to) {
+  if (to.name !== 'reports') return false
+  const reportId = Number(to.query?.reportId || 0)
+  return Number.isSafeInteger(reportId) && reportId > 0
+}
+
 router.beforeEach((to) => {
   document.title = `${to.meta.title || '猫狗智投'} - 猫狗智投`
   const loggedIn = isAuthenticated()
@@ -44,6 +50,16 @@ router.beforeEach((to) => {
     return {
       path: '/login',
       query: { redirect: to.fullPath },
+    }
+  }
+  const advancedMode = typeof localStorage !== 'undefined'
+    && localStorage.getItem('maogou_advanced_mode') === 'true'
+  // A daily report can safely link its owner to one concrete AI report. The API still
+  // checks ownership; the broad report workbench remains an advanced-only screen.
+  if (to.meta.advanced && !advancedMode && !allowsDailyReportDetail(to)) {
+    return {
+      path: '/research-daily-reports',
+      query: { advanced: 'disabled' },
     }
   }
   return true

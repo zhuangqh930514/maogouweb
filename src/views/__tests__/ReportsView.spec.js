@@ -9,8 +9,10 @@ import {
   fetchCurrentWatchlistAnalysisJob,
 } from '../../services/ai'
 
+const routeState = vi.hoisted(() => ({ query: {} }))
+
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ query: {} }),
+  useRoute: () => routeState,
 }))
 
 vi.mock('../../services/ai', () => ({
@@ -69,6 +71,18 @@ const ButtonStub = defineComponent({
   template: '<button @click="$emit(\'click\')"><slot /></button>',
 })
 
+const storage = new Map()
+
+function installAdvancedStorage() {
+  storage.clear()
+  storage.set('maogou_advanced_mode', 'true')
+  vi.stubGlobal('localStorage', {
+    getItem: (key) => storage.get(key) || null,
+    setItem: (key, value) => storage.set(key, String(value)),
+    removeItem: (key) => storage.delete(key),
+  })
+}
+
 function report(id = 1) {
   return {
     id,
@@ -121,6 +135,8 @@ async function mountView() {
 describe('ReportsView pagination and date filters', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    routeState.query = {}
+    installAdvancedStorage()
     fetchCurrentWatchlistAnalysisJob.mockResolvedValue(null)
     fetchAiReportPage.mockResolvedValue(page())
     fetchAiReport.mockImplementation(async (id) => ({
@@ -133,6 +149,7 @@ describe('ReportsView pagination and date filters', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it('opens on the latest day that actually has report data', async () => {
@@ -148,6 +165,24 @@ describe('ReportsView pagination and date filters', () => {
     expect(wrapper.text()).toContain('最新有数据')
     expect(wrapper.text()).toContain('共 21 份报告')
     expect(fetchAiReport).toHaveBeenCalledWith(1)
+  })
+
+  it('renders only the linked report for a normal user arriving from the daily report', async () => {
+    storage.delete('maogou_advanced_mode')
+    routeState.query = { reportId: '9' }
+    fetchAiReport.mockResolvedValue({
+      ...report(9),
+      technicalAnalysis: '技术面详情',
+      riskWarning: '风险详情',
+      buySellPoints: '买卖点详情',
+    })
+
+    const wrapper = await mountView()
+
+    expect(fetchAiReport).toHaveBeenCalledWith(9)
+    expect(fetchAiReportPage).not.toHaveBeenCalled()
+    expect(wrapper.find('.report-list-shell').exists()).toBe(false)
+    expect(wrapper.text()).toContain('结构化分析报告')
   })
 
   it('uses quick date buttons and resets the report page', async () => {

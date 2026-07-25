@@ -511,6 +511,65 @@
   margin-top: 12px;
 }
 
+.operations-generated-at {
+  margin: 12px 0 0;
+  color: #657188;
+  font-size: 12px;
+}
+
+.operations-summary {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.operations-summary .evidence-metric {
+  min-height: 116px;
+}
+
+.operations-summary small {
+  display: block;
+  margin-top: 7px;
+  color: #718096;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.operations-summary small.operations-warning {
+  color: #9a5b0b;
+}
+
+.operations-summary small.operations-danger {
+  color: #b42318;
+}
+
+.operations-secondary {
+  color: #718096;
+  font-size: 12px;
+}
+
+.operations-cause {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #3f4b5e;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.operations-evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 15px 0 0;
+  padding: 11px 12px 11px 28px;
+  border: 1px solid #e1e8f2;
+  border-radius: 6px;
+  color: #41516a;
+  background: #f8fafc;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 @media (max-width: 1100px) {
   .evidence-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -521,6 +580,22 @@
   }
 
   .evidence-metric:nth-child(n + 4) {
+    border-top: 1px solid #e5e7eb;
+  }
+
+  .operations-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .operations-summary .evidence-metric:nth-child(n) {
+    border-right: 1px solid #e5e7eb;
+  }
+
+  .operations-summary .evidence-metric:nth-child(4n) {
+    border-right: 0;
+  }
+
+  .operations-summary .evidence-metric:nth-child(n + 5) {
     border-top: 1px solid #e5e7eb;
   }
 }
@@ -587,6 +662,22 @@
 
   .evidence-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .operations-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .operations-summary .evidence-metric:nth-child(n) {
+    border-right: 1px solid #e5e7eb;
+  }
+
+  .operations-summary .evidence-metric:nth-child(even) {
+    border-right: 0;
+  }
+
+  .operations-summary .evidence-metric:nth-child(n + 3) {
+    border-top: 1px solid #e5e7eb;
   }
 
   .evidence-metric,

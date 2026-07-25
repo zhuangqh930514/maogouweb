@@ -131,20 +131,33 @@
         <el-table-column label="处理结果" width="142">
           <template #default="scope">{{ scope?.row?.successCount || 0 }} 成功 / {{ scope?.row?.failedCount || 0 }} 失败</template>
         </el-table-column>
+        <el-table-column label="当前步骤" min-width="142">
+          <template #default="scope">{{ statusLabel(scope?.row?.currentStep, '-') }}</template>
+        </el-table-column>
+        <el-table-column label="重试状态" min-width="180">
+          <template #default="scope">
+            <span v-if="scope?.row?.nextRetryAt">第 {{ scope.row.retryCount || 0 }} 次，{{ formatDateTime(scope.row.nextRetryAt) }} 自动重试</span>
+            <span v-else>已重试 {{ scope?.row?.retryCount || 0 }} 次</span>
+          </template>
+        </el-table-column>
         <el-table-column label="开始时间" min-width="164">
           <template #default="scope">{{ formatDateTime(scope?.row?.startedAt) }}</template>
         </el-table-column>
         <el-table-column label="结束时间" min-width="164">
           <template #default="scope">{{ formatDateTime(scope?.row?.finishedAt) }}</template>
         </el-table-column>
-        <el-table-column prop="errorMessage" label="错误" min-width="260" show-overflow-tooltip />
+        <el-table-column label="失败原因" min-width="360" show-overflow-tooltip>
+          <template #default="scope">
+            {{ localizeStatusText(scope?.row?.errorDetail || scope?.row?.errorMessage, '-') }}
+          </template>
+        </el-table-column>
       </el-table>
     </section>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Calendar, Cpu, Refresh, TrendCharts, VideoPause, VideoPlay } from '@element-plus/icons-vue'
@@ -158,6 +171,7 @@ const jobLogs = ref([])
 const loading = ref(false)
 const toggling = ref(false)
 const errorMessage = ref('')
+let statusPollTimer = null
 
 const latestReport = computed(() => schedulerStatus.value?.latestResearchDailyReport || null)
 const dailyStatusText = computed(() => {
@@ -173,19 +187,38 @@ const dailyTagType = computed(() => {
   return schedulerStatus.value?.autoClosePipelineEnabled ? 'success' : 'info'
 })
 
-onMounted(loadAutomation)
+onMounted(() => {
+  void loadAutomation()
+  statusPollTimer = window.setInterval(() => {
+    void loadAutomation({ quiet: true })
+  }, 30_000)
+})
 
-async function loadAutomation() {
-  loading.value = true
-  errorMessage.value = ''
+onUnmounted(() => {
+  if (statusPollTimer) {
+    window.clearInterval(statusPollTimer)
+    statusPollTimer = null
+  }
+})
+
+async function loadAutomation({ quiet = false } = {}) {
+  if (loading.value) return
+  if (!quiet) {
+    loading.value = true
+    errorMessage.value = ''
+  }
   try {
     const [status, logs] = await Promise.all([fetchSchedulerStatus(), fetchSchedulerJobLogs(30)])
     schedulerStatus.value = status
     jobLogs.value = logs || []
   } catch (error) {
-    errorMessage.value = error.message || '自动化任务状态加载失败'
+    if (!quiet) {
+      errorMessage.value = error.message || '自动化任务状态加载失败'
+    }
   } finally {
-    loading.value = false
+    if (!quiet) {
+      loading.value = false
+    }
   }
 }
 

@@ -11,7 +11,7 @@
         </div>
         <div class="header-actions">
           <el-button :icon="Refresh" :loading="loading" @click="loadReports">刷新</el-button>
-          <el-dropdown trigger="click" @command="handleHeaderCommand">
+          <el-dropdown v-if="advancedMode" trigger="click" @command="handleHeaderCommand">
             <el-button :icon="MoreFilled" :loading="rebuilding">更多</el-button>
             <template #dropdown>
               <el-dropdown-menu>
@@ -80,6 +80,11 @@
             <em>{{ activeReport.content?.pipeline?.errorMessage || '自动化结果已同步到日报' }}</em>
           </div>
           <div class="status-tile">
+            <span>下一次自动运行</span>
+            <strong>{{ formatDateTime(nextAutoRunAt) }}</strong>
+            <em>{{ nextAutoRunAt ? '收盘后自动生成最新结论' : '自动运行时间暂未确认' }}</em>
+          </div>
+          <div class="status-tile">
             <span>低样本结论</span>
             <strong>{{ activeReport.content?.insightSummary?.lowSampleCount || 0 }}</strong>
             <em>共 {{ activeReport.content?.insightSummary?.itemCount || 0 }} 只股票进入日报</em>
@@ -113,7 +118,7 @@
 
           <el-alert
             v-else-if="!activeReport.content?.insightSummary?.snapshotId"
-            title="这是字段升级前生成的旧版日报，未固化系统评分、AI 决策和风险等级。请从右上角“更多”按当前交易日重建。"
+            title="这是字段升级前生成的旧版日报，未固化系统评分、AI 决策和风险等级，不能作为当前正式决策。"
             type="warning"
             show-icon
             :closable="false"
@@ -138,10 +143,178 @@
             class="failed-report-alert"
           />
 
-          <ReportStockSection title="推荐关注" :items="activeReport.content?.recommendations || []" tone="recommend" @open="openReportItem" @open-sample="openSampleItem" />
-          <ReportStockSection title="谨慎观察" :items="activeReport.content?.watches || []" tone="watch" @open="openReportItem" @open-sample="openSampleItem" />
-          <ReportStockSection title="建议回避" :items="activeReport.content?.avoids || []" tone="avoid" @open="openReportItem" @open-sample="openSampleItem" />
-          <ReportStockSection title="持仓风险" :items="activeReport.content?.holdingRisks || []" tone="risk" @open="openPortfolio" />
+          <section class="action-center">
+            <div class="section-headline">
+              <div>
+                <h3>今日优先处理</h3>
+                <p>先处理触发条件和持仓风险，再查看完整观察池。</p>
+              </div>
+              <el-tag :type="actionableItems.length ? 'danger' : 'info'" effect="plain">
+                {{ actionableItems.length ? `${actionableItems.length} 项待关注` : '暂无交易条件' }}
+              </el-tag>
+            </div>
+            <el-empty
+              v-if="!actionableItems.length"
+              description="今日没有触发可执行的买入、回避或持仓风险条件"
+            />
+            <div v-else class="priority-grid">
+              <article v-for="item in actionableItems" :key="`priority-${item.stockCode}`" class="priority-item" :class="item.tone">
+                <div class="priority-item-head">
+                  <div>
+                    <strong>{{ displayStockName(item) }}</strong>
+                    <span>{{ item.stockCode }}</span>
+                  </div>
+                  <el-tag size="small" :type="priorityTagType(item)">{{ statusLabel(item.action, '观察') }}</el-tag>
+                </div>
+                <p>{{ localizeStatusText(item.reasonSummary, '系统尚未提供具体原因') }}</p>
+                <dl>
+                  <div><dt>系统分</dt><dd>{{ formatScore(item.systemScore) }}</dd></div>
+                  <div><dt>风险</dt><dd>{{ statusLabel(item.riskLevel, '待确认') }} {{ formatScore(item.riskScore) }}</dd></div>
+                  <div><dt>历史样本</dt><dd>{{ item.historicalSampleCount || 0 }} 条</dd></div>
+                </dl>
+                <div class="priority-actions">
+                  <el-button v-if="item.reportId" text type="primary" @click="openReportItem(item)">查看分析报告</el-button>
+                  <el-button v-else-if="item.category === 'HOLDING_RISK'" text type="danger" @click="openPortfolio">查看持仓</el-button>
+                  <el-button v-else-if="item.sampleId && advancedMode" text @click="openSampleItem(item)">查看研究依据</el-button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section v-if="dailyChanges.length" class="daily-change-section">
+            <div class="section-headline compact">
+              <div>
+                <h3>较上一交易日变化</h3>
+                <p>仅列出新增、移除或动作改变的股票。</p>
+              </div>
+            </div>
+            <div class="daily-change-list">
+              <div v-for="change in dailyChanges" :key="`${change.stockCode}-${change.currentAction}`" class="daily-change-item">
+                <strong>{{ change.stockName }} {{ change.stockCode }}</strong>
+                <span>{{ change.message }}</span>
+              </div>
+            </div>
+          </section>
+
+          <ReportStockSection
+            v-if="(activeReport.content?.recommendations || []).length"
+            title="推荐关注"
+            :items="activeReport.content?.recommendations || []"
+            tone="recommend"
+            :feedback-by-stock="feedbackByStock"
+            :feedback-loading-stock="feedbackLoadingStock"
+            @open="openReportItem"
+            @open-sample="openSampleItem"
+            @feedback="submitFeedback"
+          />
+          <ReportStockSection
+            v-if="(activeReport.content?.avoids || []).length"
+            title="建议回避"
+            :items="activeReport.content?.avoids || []"
+            tone="avoid"
+            :feedback-by-stock="feedbackByStock"
+            :feedback-loading-stock="feedbackLoadingStock"
+            @open="openReportItem"
+            @open-sample="openSampleItem"
+            @feedback="submitFeedback"
+          />
+          <ReportStockSection
+            v-if="(activeReport.content?.holdingRisks || []).length"
+            title="持仓风险"
+            :items="activeReport.content?.holdingRisks || []"
+            tone="risk"
+            :feedback-by-stock="feedbackByStock"
+            :feedback-loading-stock="feedbackLoadingStock"
+            @open="openPortfolio"
+            @feedback="submitFeedback"
+          />
+          <ReportStockSection
+            v-if="holdingStableItems.length"
+            title="持仓状态"
+            :items="holdingStableItems"
+            tone="watch"
+            :feedback-by-stock="feedbackByStock"
+            :feedback-loading-stock="feedbackLoadingStock"
+            @open="openPortfolio"
+            @feedback="submitFeedback"
+          />
+          <ReportStockSection
+            v-if="holdingUnavailableItems.length"
+            title="持仓数据待补"
+            :items="holdingUnavailableItems"
+            tone="risk"
+            :feedback-by-stock="feedbackByStock"
+            :feedback-loading-stock="feedbackLoadingStock"
+            @open="openPortfolio"
+            @feedback="submitFeedback"
+          />
+
+          <el-collapse v-model="expandedDecisionSections" class="decision-details" @change="handleDecisionSectionChange">
+            <el-collapse-item :title="`完整观察池（${activeReport.watchCount || 0} 只）`" name="watches">
+              <div v-if="activeReport.decisionSnapshotId" class="decision-query-toolbar">
+                <el-input
+                  v-model="watchQuery.keyword"
+                  clearable
+                  placeholder="按名称或代码筛选"
+                  @keyup.enter="refreshWatchItems"
+                />
+                <el-select v-model="watchQuery.action" clearable placeholder="全部动作" @change="refreshWatchItems">
+                  <el-option label="观察" value="WATCH" />
+                  <el-option label="持有" value="HOLD" />
+                  <el-option label="买入" value="BUY" />
+                  <el-option label="减仓" value="REDUCE" />
+                  <el-option label="卖出" value="SELL" />
+                </el-select>
+                <el-select v-model="watchQuery.sort" @change="refreshWatchItems">
+                  <el-option label="系统评分从高到低" value="SYSTEM_SCORE_DESC" />
+                  <el-option label="风险评分从高到低" value="RISK_DESC" />
+                  <el-option label="股票代码" value="STOCK_ASC" />
+                  <el-option label="数据新鲜度" value="FRESHNESS_ASC" />
+                </el-select>
+                <el-button @click="refreshWatchItems">筛选</el-button>
+              </div>
+              <ReportStockSection
+                title="谨慎观察"
+                :items="activeReport.decisionSnapshotId ? watchItems.items : (activeReport.content?.watches || [])"
+                tone="watch"
+                paginated
+                :server-paginated="Boolean(activeReport.decisionSnapshotId)"
+                :page="watchItems.page"
+                :page-size="watchItems.pageSize"
+                :total="activeReport.decisionSnapshotId ? watchItems.total : null"
+                :loading="watchItems.loading"
+                :feedback-by-stock="feedbackByStock"
+                :feedback-loading-stock="feedbackLoadingStock"
+                @page-change="loadWatchItems"
+                @open="openReportItem"
+                @open-sample="openSampleItem"
+                @feedback="submitFeedback"
+              />
+            </el-collapse-item>
+            <el-collapse-item
+              v-if="dataUnavailableCount"
+              :title="`数据不可用（${dataUnavailableCount} 只）`"
+              name="unavailable"
+            >
+              <ReportStockSection
+                title="数据不可用"
+                :items="activeReport.decisionSnapshotId ? unavailableItems.items : (activeReport.content?.unavailable || [])"
+                tone="risk"
+                paginated
+                :server-paginated="Boolean(activeReport.decisionSnapshotId)"
+                :page="unavailableItems.page"
+                :page-size="unavailableItems.pageSize"
+                :total="activeReport.decisionSnapshotId ? unavailableItems.total : null"
+                :loading="unavailableItems.loading"
+                :feedback-by-stock="feedbackByStock"
+                :feedback-loading-stock="feedbackLoadingStock"
+                @page-change="loadUnavailableItems"
+                @open="openReportItem"
+                @open-sample="openSampleItem"
+                @feedback="submitFeedback"
+              />
+            </el-collapse-item>
+          </el-collapse>
         </div>
         <el-empty v-else description="暂无投研日报" />
       </section>
@@ -152,7 +325,15 @@
             <h2 class="surface-title">历史日报</h2>
             <p class="surface-subtitle">支持按交易日回看自动化结果</p>
           </div>
-          <el-button text type="primary" @click="openAutomation">自动化任务</el-button>
+          <el-date-picker
+            v-model="historyTradeDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="筛选日期"
+            clearable
+            class="history-date-picker"
+            @change="refreshHistory"
+          />
         </div>
         <div class="surface-body report-history">
           <button
@@ -171,6 +352,17 @@
               <i :class="statusClass(report.reportStatus)">{{ statusLabel(report.reportStatus, '待确认') }}</i>
             </div>
           </button>
+          <el-pagination
+            v-if="historyTotalPages > 1"
+            :current-page="historyPage"
+            :page-size="historyPageSize"
+            :total="historyTotal"
+            small
+            background
+            layout="prev, pager, next"
+            class="history-pagination"
+            @current-change="loadHistory"
+          />
           <el-empty v-if="!loading && !reports.length" description="暂无历史日报" />
         </div>
       </section>
@@ -204,7 +396,7 @@
             <p class="surface-subtitle">核对日报来源、策略版本、流水线状态和数据边界</p>
           </div>
         </div>
-        <details class="surface-body automation-disclosure">
+        <details v-if="advancedMode" class="surface-body automation-disclosure">
           <summary>查看策略、数据时间与流水线步骤</summary>
           <div class="detail-stack automation-detail">
             <div class="detail-card">
@@ -231,48 +423,223 @@
             </div>
           </div>
         </details>
+        <div v-else class="surface-body automation-summary">
+          <div class="detail-card">
+            <span>数据状态</span>
+            <strong>{{ statusLabel(activeReport?.freshnessStatus, '待确认') }}</strong>
+            <em>样本时间 {{ formatDateTime(activeReport?.content?.freshness?.latestSampleAt) }}</em>
+          </div>
+          <div class="detail-card">
+            <span>自动化结果</span>
+            <strong :class="statusClass(activeReport?.reportStatus)">{{ statusLabel(activeReport?.reportStatus, '待确认') }}</strong>
+            <em>{{ nextAutoRunAt ? `下一次自动运行 ${formatDateTime(nextAutoRunAt)}` : '运行时间暂未确认' }}</em>
+          </div>
+        </div>
       </section>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElButton, ElEmpty, ElMessage, ElMessageBox } from 'element-plus'
 import { MoreFilled, Refresh } from '@element-plus/icons-vue'
 import ReportStockSection from '../components/ResearchReportStockSection.vue'
 import { localizeStatusText, statusLabel } from '../utils/statusLabels'
 import {
-  fetchLatestResearchDailyReport,
   fetchResearchDailyReportDetail,
-  fetchResearchDailyReports,
+  fetchResearchDailyReportFeedback,
+  fetchResearchDailyReportHistory,
+  fetchResearchDailyReportItems,
+  fetchResearchDailyReportOverview,
   rebuildResearchDailyReport,
+  submitResearchDailyReportFeedback,
 } from '../services/researchDailyReport'
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(false)
 const rebuilding = ref(false)
 const reports = ref([])
+const historyTradeDate = ref('')
+const historyPage = ref(1)
+const historyPageSize = ref(10)
+const historyTotal = ref(0)
+const historyTotalPages = ref(0)
 const activeReport = ref(null)
+const nextAutoRunAt = ref(null)
+const serverDailyChanges = ref([])
 const errorMessage = ref('')
+const expandedDecisionSections = ref([])
+const watchQuery = ref({ keyword: '', action: '', sort: 'SYSTEM_SCORE_DESC' })
+const watchItems = ref(emptyDecisionPage())
+const unavailableItems = ref(emptyDecisionPage())
+const feedbackByStock = ref({})
+const feedbackLoadingStock = ref('')
+const advancedMode = computed(() => typeof localStorage !== 'undefined'
+  && localStorage.getItem('maogou_advanced_mode') === 'true')
 
 async function loadReports() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [latest, history] = await Promise.all([
-      fetchLatestResearchDailyReport(),
-      fetchResearchDailyReports(20),
-    ])
-    activeReport.value = latest
-    reports.value = history
+    const overview = await fetchResearchDailyReportOverview(20)
+    activeReport.value = overview?.report || null
+    nextAutoRunAt.value = overview?.nextAutoRunAt || null
+    try {
+      const history = await fetchResearchDailyReportHistory({ page: 1, pageSize: historyPageSize.value })
+      applyHistory(history, overview?.history || [])
+    } catch {
+      applyHistory(null, overview?.history || [])
+    }
+    serverDailyChanges.value = overview?.dailyChanges || []
+    resetDecisionPages()
+    void loadFeedback(activeReport.value?.id)
   } catch (error) {
     errorMessage.value = error.message || '投研日报加载失败'
     activeReport.value = null
     reports.value = []
+    historyTotal.value = 0
+    historyTotalPages.value = 0
+    serverDailyChanges.value = []
+    nextAutoRunAt.value = null
   } finally {
     loading.value = false
+  }
+}
+
+const actionableItems = computed(() => {
+  const content = activeReport.value?.content || {}
+  const decorate = (items, tone) => (items || []).map(item => ({ ...item, tone }))
+  const urgent = [
+    ...decorate(content.holdingRisks, 'risk'),
+    ...decorate(holdingUnavailableItems.value, 'risk'),
+    ...decorate(content.avoids, 'avoid'),
+    ...decorate(content.recommendations, 'recommend'),
+  ]
+  return urgent
+    .sort((left, right) => Number(right.riskScore || 0) - Number(left.riskScore || 0)
+      || Number(right.systemScore || 0) - Number(left.systemScore || 0))
+    .slice(0, 5)
+})
+
+const holdingStableItems = computed(() => (activeReport.value?.content?.watches || [])
+  .filter(item => item?.positionPlan))
+
+const holdingUnavailableItems = computed(() => (activeReport.value?.content?.unavailable || [])
+  .filter(item => item?.positionPlan))
+
+const dailyChanges = computed(() => (serverDailyChanges.value || []).slice(0, 8).map(change => ({
+  ...change,
+  currentAction: change.currentAction,
+  message: localizeDailyChange(change),
+})))
+
+const dataUnavailableCount = computed(() => {
+  const content = activeReport.value?.content || {}
+  if (!activeReport.value?.decisionSnapshotId) return (content.unavailable || []).length
+  const total = Number(content.insightSummary?.itemCount || 0)
+  const categorized = Number(activeReport.value.recommendationCount || 0)
+    + Number(activeReport.value.watchCount || 0)
+    + Number(activeReport.value.avoidCount || 0)
+    + Number(activeReport.value.holdingRiskCount || 0)
+  return Math.max(0, total - categorized)
+})
+
+function emptyDecisionPage() {
+  return { items: [], total: 0, page: 1, pageSize: 8, totalPages: 0, loading: false }
+}
+
+function resetDecisionPages() {
+  watchItems.value = emptyDecisionPage()
+  unavailableItems.value = emptyDecisionPage()
+  expandedDecisionSections.value = []
+  feedbackByStock.value = {}
+  feedbackLoadingStock.value = ''
+}
+
+async function loadFeedback(reportId) {
+  if (!reportId) {
+    feedbackByStock.value = {}
+    return
+  }
+  try {
+    const rows = await fetchResearchDailyReportFeedback(reportId)
+    if (activeReport.value?.id !== reportId) return
+    feedbackByStock.value = Object.fromEntries((rows || [])
+      .filter(row => row?.stockCode)
+      .map(row => [row.stockCode, row]))
+  } catch {
+    if (activeReport.value?.id === reportId) feedbackByStock.value = {}
+  }
+}
+
+async function submitFeedback({ item, feedbackType }) {
+  const reportId = activeReport.value?.id
+  const stockCode = item?.stockCode
+  if (!reportId || !stockCode || !feedbackType) return
+  feedbackLoadingStock.value = stockCode
+  try {
+    const saved = await submitResearchDailyReportFeedback(reportId, { stockCode, feedbackType })
+    feedbackByStock.value = { ...feedbackByStock.value, [stockCode]: saved }
+    ElMessage.success('反馈已记录，仅用于改进结论说明与展示')
+  } catch (error) {
+    ElMessage.error(error.message || '反馈保存失败')
+  } finally {
+    feedbackLoadingStock.value = ''
+  }
+}
+
+async function loadDecisionItems(category, page = 1) {
+  const reportId = activeReport.value?.id
+  if (!reportId || !activeReport.value?.decisionSnapshotId) return
+  const target = category === 'CAUTIOUS' ? watchItems : unavailableItems
+  const filters = category === 'CAUTIOUS'
+    ? { category, action: watchQuery.value.action, keyword: watchQuery.value.keyword, sort: watchQuery.value.sort }
+    : { category: 'DATA_UNAVAILABLE', dataStatus: 'UNAVAILABLE', sort: 'FRESHNESS_ASC' }
+  target.value.loading = true
+  try {
+    const response = await fetchResearchDailyReportItems(reportId, {
+      ...filters,
+      page,
+      pageSize: target.value.pageSize,
+    })
+    target.value = {
+      items: response?.items || [],
+      total: Number(response?.total || 0),
+      page: Number(response?.page || 1),
+      pageSize: Number(response?.pageSize || target.value.pageSize),
+      totalPages: Number(response?.totalPages || 0),
+      loading: false,
+    }
+  } catch (error) {
+    target.value = { ...target.value, items: [], total: 0, page: 1, totalPages: 0, loading: false }
+    errorMessage.value = error.message || '日报明细加载失败'
+  }
+}
+
+function loadWatchItems(page) {
+  loadDecisionItems('CAUTIOUS', page)
+}
+
+function loadUnavailableItems(page) {
+  loadDecisionItems('DATA_UNAVAILABLE', page)
+}
+
+function refreshWatchItems() {
+  loadWatchItems(1)
+}
+
+function handleDecisionSectionChange(names) {
+  const opened = Array.isArray(names) ? names : [names]
+  if (opened.includes('watches') && !watchItems.value.loading
+      && !watchItems.value.total && !watchItems.value.items.length) {
+    loadWatchItems(1)
+  }
+  if (opened.includes('unavailable') && !unavailableItems.value.loading
+      && !unavailableItems.value.total && !unavailableItems.value.items.length) {
+    loadUnavailableItems(1)
   }
 }
 
@@ -282,6 +649,9 @@ async function loadDetail(reportId) {
   errorMessage.value = ''
   try {
     activeReport.value = await fetchResearchDailyReportDetail(reportId)
+    serverDailyChanges.value = []
+    resetDecisionPages()
+    void loadFeedback(activeReport.value?.id)
   } catch (error) {
     errorMessage.value = error.message || '日报详情加载失败'
   } finally {
@@ -289,11 +659,36 @@ async function loadDetail(reportId) {
   }
 }
 
+async function loadHistory(page = 1) {
+  try {
+    const history = await fetchResearchDailyReportHistory({
+      page,
+      pageSize: historyPageSize.value,
+      tradeDate: historyTradeDate.value || undefined,
+    })
+    applyHistory(history, [])
+  } catch (error) {
+    errorMessage.value = error.message || '历史日报加载失败'
+  }
+}
+
+function refreshHistory() {
+  loadHistory(1)
+}
+
+function applyHistory(history, fallbackItems) {
+  reports.value = history?.items || fallbackItems
+  historyTotal.value = Number(history?.total ?? reports.value.length)
+  historyPage.value = Number(history?.page || 1)
+  historyPageSize.value = Number(history?.pageSize || historyPageSize.value)
+  historyTotalPages.value = Number(history?.totalPages || (historyTotal.value ? 1 : 0))
+}
+
 async function rebuildReport() {
   rebuilding.value = true
   try {
-    activeReport.value = await rebuildResearchDailyReport(activeReport.value?.tradeDate)
-    reports.value = await fetchResearchDailyReports(20)
+    await rebuildResearchDailyReport(activeReport.value?.tradeDate)
+    await loadReports()
     ElMessage.success('投研日报已重建')
   } catch (error) {
     ElMessage.error(error.message || '投研日报重建失败')
@@ -353,6 +748,37 @@ function openPortfolio() {
   router.push('/portfolio')
 }
 
+function displayStockName(item) {
+  const code = String(item?.stockCode || '').trim()
+  const name = String(item?.stockName || '').trim()
+  return name && name !== code && !/^\d{6}(?:\.(?:SH|SZ|BJ))?$/i.test(name) ? name : code
+}
+
+function localizeDailyChange(change) {
+  const type = String(change?.changeType || '').toUpperCase()
+  if (type === 'NEW') return `新增为${statusLabel(change.currentAction, '观察')}`
+  if (type === 'REMOVED') return `已从${statusLabel(change.previousAction, '观察')}移出日报`
+  if (type === 'ACTION_CHANGED') {
+    return `${statusLabel(change.previousAction, '观察')}调整为${statusLabel(change.currentAction, '观察')}`
+  }
+  if (type === 'HOLDING_RISK_CHANGED') return '持仓风险等级或条件已变化'
+  if (type === 'RISK_CHANGED') return '风险等级已变化'
+  if (type === 'FACTORS_CHANGED') return '触发因子已变化'
+  if (type === 'FRESHNESS_CHANGED') return '数据新鲜度已变化'
+  return localizeStatusText(change?.message, '日报结论已更新')
+}
+
+function priorityTagType(item) {
+  if (item?.category === 'HOLDING_RISK') return 'danger'
+  if (item?.category === 'AVOID') return 'warning'
+  return 'danger'
+}
+
+function formatScore(value) {
+  if (value === null || value === undefined || value === '') return '-'
+  return Number(value).toFixed(1)
+}
+
 function formatDateTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
 }
@@ -385,7 +811,13 @@ function statusClass(value) {
   }[value] || 'warn'
 }
 
-onMounted(loadReports)
+onMounted(async () => {
+  await loadReports()
+  const requestedReportId = Number(route.query.reportId || 0)
+  if (requestedReportId && requestedReportId !== Number(activeReport.value?.id || 0)) {
+    await loadDetail(requestedReportId)
+  }
+})
 </script>
 
 <style scoped>
@@ -516,6 +948,141 @@ onMounted(loadReports)
   text-wrap: pretty;
 }
 
+.action-center,
+.daily-change-section {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.section-headline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.section-headline h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+.section-headline p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.section-headline.compact { margin-bottom: 10px; }
+
+.priority-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.priority-item {
+  min-width: 0;
+  padding: 15px 16px;
+  border: 1px solid #dbe4ef;
+  border-left: 4px solid #64748b;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.priority-item.recommend { border-left-color: #dc2626; }
+.priority-item.avoid { border-left-color: #b45309; }
+.priority-item.risk { border-left-color: #be123c; }
+
+.priority-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.priority-item-head > div { min-width: 0; }
+
+.priority-item-head strong,
+.priority-item-head span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.priority-item-head strong { color: #111827; }
+.priority-item-head span { color: #64748b; font-size: 12px; }
+
+.priority-item p {
+  min-height: 40px;
+  margin: 10px 0 12px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.priority-item dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 10px 0;
+  border-top: 1px solid #eef2f7;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.priority-item dt,
+.priority-item dd { margin: 0; }
+.priority-item dt { color: #64748b; font-size: 11px; }
+.priority-item dd { margin-top: 3px; color: #1f2937; font-size: 12px; overflow-wrap: anywhere; }
+.priority-actions { margin-top: 6px; }
+
+.daily-change-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.daily-change-item {
+  min-width: 0;
+  padding: 11px 13px;
+  border-right: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.daily-change-item:nth-child(2n) { border-right: 0; }
+.daily-change-item:nth-last-child(-n + 2) { border-bottom: 0; }
+.daily-change-item strong,
+.daily-change-item span { display: block; overflow-wrap: anywhere; }
+.daily-change-item strong { color: #334155; font-size: 13px; }
+.daily-change-item span { margin-top: 3px; color: #64748b; font-size: 12px; }
+
+.decision-details {
+  margin-top: 22px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.decision-details :deep(.el-collapse-item__header) {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.decision-details :deep(.el-collapse-item__content) { padding-bottom: 4px; }
+
+.decision-query-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) minmax(120px, 0.8fr) minmax(165px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 0 2px;
+}
+
 .factor-item strong {
   display: block;
   color: #111827;
@@ -539,6 +1106,15 @@ onMounted(loadReports)
 .pipeline-steps {
   display: grid;
   gap: 10px;
+}
+
+.history-date-picker {
+  width: 142px;
+}
+
+.history-pagination {
+  justify-content: center;
+  margin-top: 6px;
 }
 
 .history-item {
@@ -651,6 +1227,12 @@ onMounted(loadReports)
   margin-top: 16px;
 }
 
+.automation-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .ok { color: #15803d !important; }
 .warn { color: #b45309 !important; }
 .danger { color: #dc2626 !important; }
@@ -702,6 +1284,10 @@ onMounted(loadReports)
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .automation-summary {
+    grid-template-columns: 1fr;
+  }
+
   .header-actions :deep(.el-button) {
     width: 100%;
     margin: 0;
@@ -736,6 +1322,30 @@ onMounted(loadReports)
   .history-item {
     align-items: flex-start;
   }
+
+  .section-headline { align-items: flex-start; }
+
+  .priority-grid,
+  .daily-change-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .decision-query-toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .decision-query-toolbar :deep(.el-button) {
+    width: 100%;
+  }
+
+  .daily-change-item,
+  .daily-change-item:nth-child(2n),
+  .daily-change-item:nth-last-child(-n + 2) {
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .daily-change-item:last-child { border-bottom: 0; }
 
 }
 

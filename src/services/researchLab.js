@@ -24,6 +24,11 @@ export function fetchResearchOverview() {
   return request('/api/ai/research-lab/overview')
 }
 
+export function fetchResearchOperationsOverview(windowDays = 14) {
+  const safeWindowDays = Math.max(1, Math.min(90, Number(windowDays) || 14))
+  return request(`/api/ai/research-lab/operations-overview?windowDays=${safeWindowDays}`)
+}
+
 export const fetchResearchUniverse = (params) => fetchPage('universe', params)
 export const fetchResearchDataBatches = (params) => fetchPage('data-batches', params)
 export const fetchResearchSourceHealth = (params) => fetchPage('source-health', params)
@@ -41,6 +46,10 @@ export const fetchStrategyReleases = (params) => fetchPage('strategies', params)
 export const fetchShadowEvaluations = (params) => fetchPage('shadow-evaluations', params)
 export const fetchGovernanceEvents = (params) => fetchPage('governance-events', params)
 export const fetchPipelineRuns = (params) => fetchPage('pipeline-runs', params)
+export const fetchConditionalRuleConfigs = (params) => fetchPage('conditional-rules/configs', params)
+export const fetchConditionalRuleExperiments = (params) => fetchPage('conditional-rules/experiments', params)
+export const fetchConditionalRuleShadowObservations = (params) => fetchPage('conditional-rules/shadow-observations', params)
+export const fetchConditionalRuleGovernanceEvents = (params) => fetchPage('conditional-rules/governance-events', params)
 
 export const fetchResearchSample = (id) => fetchDetail('samples', id)
 export const fetchTrainingDataset = (id) => fetchDetail('datasets', id)
@@ -81,6 +90,26 @@ export function rejectStrategy(strategyId, payload) {
 
 export function rollbackStrategy(strategyId, payload) {
   return governance(strategyId, 'rollback', payload)
+}
+
+export function createConditionalRuleCandidate(payload) {
+  return post('/api/ai/research-lab/conditional-rules/candidates', payload)
+}
+
+export function runConditionalRuleWalkForward(payload) {
+  return post('/api/ai/research-lab/actions/run-conditional-rule-walk-forward', payload)
+}
+
+export function runConditionalRuleShadow(payload) {
+  return post('/api/ai/research-lab/actions/run-conditional-rule-shadow', payload)
+}
+
+export function approveConditionalRuleShadow(shadowObservationId, payload) {
+  return post(`/api/ai/research-lab/conditional-rules/shadow/${encodeURIComponent(shadowObservationId)}/approve`, payload)
+}
+
+export function rejectConditionalRuleShadow(shadowObservationId, payload) {
+  return post(`/api/ai/research-lab/conditional-rules/shadow/${encodeURIComponent(shadowObservationId)}/reject`, payload)
 }
 
 export async function pollPipelineRun(
