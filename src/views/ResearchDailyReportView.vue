@@ -65,9 +65,9 @@
             <em>{{ localizeStatusText(activeReport.executiveSummary) }}</em>
           </div>
           <div class="status-tile">
-            <span>快照时间</span>
+            <span>日报固化时间</span>
             <strong>{{ formatDateTime(activeReport.content?.insightSummary?.generatedAt) }}</strong>
-            <em>最新样本 {{ formatDateTime(activeReport.content?.freshness?.latestSampleAt) }}</em>
+            <em>收盘样本 {{ formatDateTime(activeReport.content?.freshness?.latestSampleAt) }}</em>
           </div>
           <div class="status-tile">
             <span>策略状态</span>
@@ -170,7 +170,7 @@
                 <dl>
                   <div><dt>系统分</dt><dd>{{ formatScore(item.systemScore) }}</dd></div>
                   <div><dt>风险</dt><dd>{{ statusLabel(item.riskLevel, '待确认') }} {{ formatScore(item.riskScore) }}</dd></div>
-                  <div><dt>历史样本</dt><dd>{{ item.historicalSampleCount || 0 }} 条</dd></div>
+                  <div><dt>历史验证</dt><dd>{{ evidenceSummary(item) }}</dd></div>
                 </dl>
                 <div class="priority-actions">
                   <el-button v-if="item.reportId" text type="primary" @click="openReportItem(item)">查看分析报告</el-button>
@@ -427,7 +427,7 @@
           <div class="detail-card">
             <span>数据状态</span>
             <strong>{{ statusLabel(activeReport?.freshnessStatus, '待确认') }}</strong>
-            <em>样本时间 {{ formatDateTime(activeReport?.content?.freshness?.latestSampleAt) }}</em>
+            <em>收盘样本时间 {{ formatDateTime(activeReport?.content?.freshness?.latestSampleAt) }}</em>
           </div>
           <div class="detail-card">
             <span>自动化结果</span>
@@ -549,6 +549,12 @@ const dataUnavailableCount = computed(() => {
 
 function emptyDecisionPage() {
   return { items: [], total: 0, page: 1, pageSize: 8, totalPages: 0, loading: false }
+}
+
+function evidenceSummary(item) {
+  const scope = statusLabel(item?.evidenceScope, '证据范围未记录')
+  const count = Number(item?.historicalSampleCount || 0)
+  return `${scope} ${count.toLocaleString('zh-CN')} 条`
 }
 
 function resetDecisionPages() {
@@ -758,6 +764,8 @@ function localizeDailyChange(change) {
   const type = String(change?.changeType || '').toUpperCase()
   if (type === 'NEW') return `新增为${statusLabel(change.currentAction, '观察')}`
   if (type === 'REMOVED') return `已从${statusLabel(change.previousAction, '观察')}移出日报`
+  if (type === 'DATA_UNAVAILABLE') return '当日数据不可用，暂不形成正式结论'
+  if (type === 'DATA_RECOVERED') return '数据已恢复，已形成正式结论'
   if (type === 'ACTION_CHANGED') {
     return `${statusLabel(change.previousAction, '观察')}调整为${statusLabel(change.currentAction, '观察')}`
   }

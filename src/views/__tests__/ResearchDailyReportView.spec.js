@@ -46,7 +46,11 @@ function report(overrides = {}) {
     current: true,
     pipelineRunId: 10,
     content: {
-      freshness: { status: 'REALTIME', dataQualityScore: 88 },
+      freshness: {
+        status: 'REALTIME',
+        dataQualityScore: 88,
+        latestSampleAt: '2026-07-10T16:00:00',
+      },
       insightSummary: {
         snapshotId: 41,
         generatedAt: '2026-07-10T16:20:00',
@@ -137,6 +141,31 @@ describe('ResearchDailyReportView', () => {
     expect(wrapper.text()).toContain('今日结论')
     expect(wrapper.text()).toContain('就绪')
     expect(wrapper.text()).toContain('贵州茅台')
+  })
+
+  it('separates the actual close sample time from the daily report generation time', async () => {
+    const wrapper = await mountView(report())
+
+    expect(wrapper.text()).toContain('日报固化时间')
+    expect(wrapper.text()).toContain('收盘样本 2026-07-10 16:00:00')
+    expect(wrapper.text()).not.toContain('最新样本 2026-07-10 16:20:00')
+  })
+
+  it('labels fallback evidence explicitly in priority cards', async () => {
+    const fallback = report({
+      content: {
+        ...report().content,
+        recommendations: [{
+          ...report().content.recommendations[0],
+          evidenceScope: 'STRATEGY_FALLBACK',
+          historicalSampleCount: 44558,
+        }],
+      },
+    })
+    const wrapper = await mountView(fallback)
+
+    expect(wrapper.find('.priority-item').text()).toContain('策略级样本 44,558 条')
+    expect(wrapper.find('.priority-item').text()).not.toContain('历史样本')
   })
 
   it('shows the next automatic run while keeping technical controls out of normal mode', async () => {

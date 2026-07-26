@@ -16,6 +16,7 @@ const STATUS_LABELS = Object.freeze({
   BULL: '强势',
   BUY: '买入',
   CANCELLED: '已取消',
+  CAUTIOUS: '谨慎观察',
   CANDIDATE: '候选版本',
   CANDIDATE_CREATED: '已创建候选规则',
   CHALLENGER: '候选策略',
