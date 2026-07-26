@@ -53,6 +53,15 @@
           </div>
         </div>
 
+        <section v-if="activeReport?.content?.priorVerifications?.length" class="verification-strip">
+          <div v-for="item in activeReport.content.priorVerifications" :key="`verification-${item.horizonDays}`" class="verification-item">
+            <strong>T+{{ item.horizonDays }} 到期复盘</strong>
+            <span>应核验 {{ item.dueCount || 0 }} · 已检查 {{ item.triggerCheckedCount || 0 }}</span>
+            <em>有效 {{ item.effectiveCount || 0 }} · 无效 {{ item.ineffectiveCount || 0 }} · 未触发 {{ item.noTriggerCount || 0 }}</em>
+            <small v-if="item.retryableCount || item.unavailableCount">待重试 {{ item.retryableCount || 0 }} · 数据不可用 {{ item.unavailableCount || 0 }}</small>
+          </div>
+        </section>
+
         <div v-if="activeReport" class="status-grid">
           <div class="status-tile">
             <span>日报版本</span>
@@ -192,6 +201,21 @@
               <div v-for="change in dailyChanges" :key="`${change.stockCode}-${change.currentAction}`" class="daily-change-item">
                 <strong>{{ change.stockName }} {{ change.stockCode }}</strong>
                 <span>{{ change.message }}</span>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="activeReport.content?.learningChanges?.length" class="daily-change-section learning-feedback-section">
+            <div class="section-headline compact">
+              <div>
+                <h3>系统学习反馈</h3>
+                <p>仅展示已经完成复盘的候选证据，不会直接修改正式策略。</p>
+              </div>
+            </div>
+            <div class="daily-change-list">
+              <div v-for="change in activeReport.content.learningChanges" :key="`${change.type}-${change.message}`" class="daily-change-item">
+                <strong>{{ localizeStatusText(change.type, '复盘反馈') }}</strong>
+                <span>{{ localizeStatusText(change.message) }}</span>
               </div>
             </div>
           </section>
@@ -859,6 +883,28 @@ onMounted(async () => {
   background: #f8fafc;
 }
 
+.verification-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border-top: 1px solid #e5e7eb;
+  margin-top: 16px;
+}
+
+.verification-item {
+  min-width: 0;
+  padding: 14px 16px;
+  border-right: 1px solid #e5e7eb;
+  display: grid;
+  gap: 4px;
+}
+
+.verification-item:last-child { border-right: 0; }
+.verification-item strong { color: #0f172a; font-size: 14px; }
+.verification-item span, .verification-item em, .verification-item small { overflow-wrap: anywhere; font-style: normal; }
+.verification-item span { color: #475569; font-size: 13px; }
+.verification-item em { color: #15803d; font-size: 12px; }
+.verification-item small { color: #b45309; font-size: 12px; }
+
 .metric-item {
   min-width: 0;
   padding: 15px 18px;
@@ -1255,6 +1301,10 @@ onMounted(async () => {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .verification-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .metric-item,
   .status-tile {
     border-right: 1px solid #e5e7eb;
@@ -1309,6 +1359,18 @@ onMounted(async () => {
   .status-grid {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .verification-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .verification-item,
+  .verification-item:last-child {
+    border-right: 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  .verification-item:last-child { border-bottom: 0; }
 
   .metric-item,
   .status-tile {
