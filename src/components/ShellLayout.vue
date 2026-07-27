@@ -34,13 +34,10 @@
           <el-icon><Wallet /></el-icon>
           <span>持仓记录</span>
         </el-menu-item>
-        <el-sub-menu index="ai-analysis">
-          <template #title>
-            <el-icon><DocumentChecked /></el-icon>
-            <span>AI分析</span>
-          </template>
-          <el-menu-item index="/research-daily-reports">投研日报</el-menu-item>
-        </el-sub-menu>
+        <el-menu-item index="/research-daily-reports">
+          <el-icon><DocumentChecked /></el-icon>
+          <span>投研日报</span>
+        </el-menu-item>
         <el-sub-menu v-if="advancedMode" index="advanced-research">
           <template #title>
             <el-icon><Document /></el-icon>
@@ -157,9 +154,6 @@ const now = ref(new Date())
 let clockTimer = null
 let notificationTimer = null
 
-const aiMenuPaths = [
-  '/research-daily-reports',
-]
 const advancedResearchPaths = [
   '/reports',
   '/research-lab',
@@ -175,7 +169,6 @@ const mobileNavigation = [
   { path: '/chat', label: '猫狗畅聊' },
 ]
 const defaultOpeneds = computed(() => {
-  if (aiMenuPaths.includes(route.path)) return ['ai-analysis']
   if (advancedResearchPaths.includes(route.path)) return ['advanced-research']
   return []
 })

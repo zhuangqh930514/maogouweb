@@ -3,7 +3,21 @@
     <section class="surface toolbar-surface">
       <div class="surface-body watch-toolbar">
         <el-segmented v-model="group" :options="['全部', 'AI重点', '高波动', '稳健持有']" />
-        <div class="toolbar-spacer"></div>
+        <el-input
+          v-model="keyword"
+          class="watch-search"
+          :prefix-icon="Search"
+          clearable
+          placeholder="搜索自选股名称或代码"
+        />
+        <el-select v-model="sortMode" class="sort-select" aria-label="自选股排序方式">
+          <el-option label="手动排序" value="MANUAL" />
+          <el-option label="AI 评分从高到低" value="AI_SCORE_DESC" />
+          <el-option label="涨跌幅从高到低" value="PERCENT_DESC" />
+          <el-option label="涨跌幅从低到高" value="PERCENT_ASC" />
+          <el-option label="量比从高到低" value="VOLUME_RATIO_DESC" />
+        </el-select>
+        <el-switch v-model="pinnedOnly" class="pinned-switch" active-text="仅看置顶" />
         <el-autocomplete
           v-model="newCode"
           :fetch-suggestions="queryStockSuggestions"
@@ -28,6 +42,7 @@
         <div class="surface-header">
           <div>
             <h2 class="surface-title">自选股列表</h2>
+            <p class="surface-caption">{{ manualSortEnabled ? '拖动手柄调整顺序；置顶股票始终显示在列表顶部。' : '当前为筛选或自动排序结果，切换为“手动排序”后可拖动调整。' }}</p>
           </div>
           <el-button
             type="danger"
@@ -39,7 +54,7 @@
             批量删除
           </el-button>
         </div>
-        <div class="surface-body">
+        <div class="surface-body watch-table-wrap" @dragover.prevent @drop="handleTableDrop">
           <el-table
             v-loading="loading"
             :data="watchStocks"
@@ -50,9 +65,29 @@
             @selection-change="selectedRows = $event"
           >
             <el-table-column type="selection" width="46" />
+            <el-table-column width="44" align="center">
+              <template #default="{ row }">
+                <button
+                  type="button"
+                  class="drag-handle"
+                  :class="{ disabled: !manualSortEnabled }"
+                  :disabled="!manualSortEnabled"
+                  :draggable="manualSortEnabled"
+                  title="拖动调整顺序"
+                  @click.stop
+                  @dragstart.stop="startDrag(row, $event)"
+                  @dragend="draggingCode = ''"
+                >
+                  <el-icon><Rank /></el-icon>
+                </button>
+              </template>
+            </el-table-column>
             <el-table-column label="股票" min-width="150">
               <template #default="{ row }">
-                <strong>{{ row.name }}</strong>
+                <div class="watch-stock-name">
+                  <strong>{{ row.name }}</strong>
+                  <el-tag v-if="row.pinned" size="small" effect="plain" class="pin-tag">置顶</el-tag>
+                </div>
                 <div class="muted mono">{{ row.code }}</div>
               </template>
             </el-table-column>
@@ -72,6 +107,13 @@
             <el-table-column label="AI评分" width="110">
               <template #default="{ row }">
                 <el-tag :class="row.aiScore >= 75 ? 'tag-red' : 'tag-blue'" effect="plain">{{ row.aiScore }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="86" align="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click.stop="togglePinned(row)">
+                  {{ row.pinned ? '取消置顶' : '置顶' }}
+                </el-button>
               </template>
             </el-table-column>
             <template #empty>
@@ -143,15 +185,25 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Rank, Search } from '@element-plus/icons-vue'
 import AiReportBlock from '../components/AiReportBlock.vue'
 import EChart from '../components/EChart.vue'
 import { klineOption, lineOption } from '../services/chartOptions'
 import { fetchStockDetail, searchStocks } from '../services/stocks'
-import { addWatchStock, fetchWatchlistPage, removeWatchStocks } from '../services/watchlist'
+import {
+  addWatchStock,
+  fetchWatchlist,
+  fetchWatchlistPage,
+  pinWatchStock,
+  removeWatchStocks,
+  reorderWatchStocks,
+} from '../services/watchlist'
 import { isAshareMarketOpen } from '../utils/marketTime'
 
 const group = ref('全部')
+const keyword = ref('')
+const sortMode = ref('MANUAL')
+const pinnedOnly = ref(false)
 const detailTab = ref('kline')
 const newCode = ref('')
 const selectedSuggestion = ref(null)
@@ -166,8 +218,17 @@ const detail = ref(null)
 const watchPage = ref(1)
 const watchPageSize = ref(50)
 const watchTotal = ref(0)
+const draggingCode = ref('')
 let refreshTimer = null
 let initialQuoteRefreshTimer = null
+let keywordTimer = null
+
+const manualSortEnabled = computed(() => (
+  group.value === '全部'
+  && sortMode.value === 'MANUAL'
+  && !keyword.value.trim()
+  && !pinnedOnly.value
+))
 
 const intradayValues = computed(() => (detail.value?.intraday || []).map((point) => Number(point.value)))
 const intradayTimes = computed(() => (detail.value?.intraday || []).map((point) => point.time))
@@ -213,6 +274,9 @@ async function loadWatchlist({ loadInitialDetail = true, silent = false } = {}) 
       page: watchPage.value,
       pageSize: watchPageSize.value,
       view: group.value,
+      keyword: keyword.value.trim(),
+      sort: sortMode.value,
+      pinnedOnly: pinnedOnly.value,
     })
     watchStocks.value = (result?.items || []).map(normalizeStock)
     watchTotal.value = Number(result?.total || 0)
@@ -263,7 +327,7 @@ async function addStock() {
   }
   adding.value = true
   try {
-    const stock = normalizeStock(await addWatchStock(code, group.value === '全部' ? '全部' : group.value))
+    const stock = normalizeStock(await addWatchStock(code))
     newCode.value = ''
     selectedSuggestion.value = null
     ElMessage.success(`已添加 ${stock.name || stock.code}`)
@@ -329,6 +393,63 @@ async function deleteSelectedStocks() {
   }
 }
 
+function startDrag(row, event) {
+  if (!manualSortEnabled.value) {
+    event.preventDefault()
+    return
+  }
+  draggingCode.value = row.code
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData('text/plain', row.code)
+}
+
+async function handleTableDrop(event) {
+  if (!manualSortEnabled.value || !draggingCode.value) {
+    return
+  }
+  const targetRow = event.target instanceof Element ? event.target.closest('tr') : null
+  const displayedRows = Array.from(event.currentTarget.querySelectorAll('.el-table__body tbody tr'))
+  const targetIndex = targetRow ? displayedRows.indexOf(targetRow) : -1
+  const target = targetIndex >= 0 ? watchStocks.value[targetIndex] : null
+  const sourceCode = draggingCode.value
+  draggingCode.value = ''
+  if (!target || target.code === sourceCode) {
+    return
+  }
+  const source = watchStocks.value.find((item) => item.code === sourceCode)
+  if (source && source.pinned !== target.pinned) {
+    ElMessage.warning('置顶股票和普通股票分别排序；请拖到同一类股票内调整顺序')
+    return
+  }
+  try {
+    const allStocks = (await fetchWatchlist()).map(normalizeStock)
+    const codes = allStocks.map((item) => item.code)
+    const sourceIndex = codes.indexOf(sourceCode)
+    const destinationIndex = codes.indexOf(target.code)
+    if (sourceIndex < 0 || destinationIndex < 0) {
+      throw new Error('未找到需要排序的自选股')
+    }
+    codes.splice(sourceIndex, 1)
+    codes.splice(destinationIndex, 0, sourceCode)
+    await reorderWatchStocks(codes)
+    ElMessage.success('排序已保存')
+    await loadWatchlist({ loadInitialDetail: false })
+  } catch (error) {
+    ElMessage.error(error.message || '保存排序失败')
+  }
+}
+
+async function togglePinned(row) {
+  try {
+    await pinWatchStock(row.code, !row.pinned)
+    ElMessage.success(row.pinned ? '已取消置顶' : '已置顶')
+    selectedRows.value = []
+    await loadWatchlist({ loadInitialDetail: false })
+  } catch (error) {
+    ElMessage.error(error.message || '更新置顶状态失败')
+  }
+}
+
 function normalizeStock(item) {
   return {
     ...item,
@@ -340,6 +461,7 @@ function normalizeStock(item) {
     pb: Number(item.pb || 0),
     revenueGrowth: Number(item.revenueGrowth || 0),
     profitGrowth: Number(item.profitGrowth || 0),
+    pinned: item.pinned === true || Number(item.pinned) === 1,
   }
 }
 
@@ -367,10 +489,21 @@ function formatYi(value) {
   })}亿`
 }
 
-watch(group, async () => {
+watch([group, sortMode, pinnedOnly], async () => {
   watchPage.value = 1
   selectedRows.value = []
   await loadWatchlist()
+})
+
+watch(keyword, () => {
+  if (keywordTimer) {
+    window.clearTimeout(keywordTimer)
+  }
+  keywordTimer = window.setTimeout(async () => {
+    watchPage.value = 1
+    selectedRows.value = []
+    await loadWatchlist()
+  }, 300)
 })
 
 async function handleWatchPageChange(page) {
@@ -403,6 +536,9 @@ onUnmounted(() => {
   if (refreshTimer) {
     window.clearInterval(refreshTimer)
   }
+  if (keywordTimer) {
+    window.clearTimeout(keywordTimer)
+  }
 })
 </script>
 
@@ -413,13 +549,17 @@ onUnmounted(() => {
 
 .watch-toolbar {
   display: grid;
-  grid-template-columns: auto minmax(24px, 1fr) 260px auto;
+  grid-template-columns: auto minmax(190px, 1fr) 178px auto 260px auto;
   align-items: center;
   gap: 14px;
 }
 
-.toolbar-spacer {
-  min-width: 24px;
+.sort-select {
+  width: 178px;
+}
+
+.pinned-switch {
+  white-space: nowrap;
 }
 
 .stock-suggestion {
@@ -453,6 +593,53 @@ onUnmounted(() => {
   color: #64748b;
   font-size: 13px;
   line-height: 20px;
+}
+
+.surface-caption {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.watch-stock-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pin-tag {
+  border-color: #bfdbfe;
+  color: #2563eb;
+  flex: 0 0 auto;
+}
+
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 30px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: grab;
+}
+
+.drag-handle:hover:not(.disabled) {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.drag-handle:active:not(.disabled) {
+  cursor: grabbing;
+}
+
+.drag-handle.disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .watch-layout {
@@ -514,5 +701,37 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+@media (max-width: 1280px) {
+  .watch-toolbar {
+    grid-template-columns: auto minmax(180px, 1fr) 166px auto;
+  }
+
+  .watch-toolbar .el-autocomplete {
+    grid-column: 2 / span 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .watch-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .watch-toolbar .el-segmented,
+  .watch-search,
+  .sort-select,
+  .watch-toolbar .el-autocomplete {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .pinned-switch {
+    grid-column: 1;
+  }
+
+  .watch-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

@@ -18,7 +18,7 @@ vi.mock('../../services/settings', () => ({
 }))
 
 describe('ShellLayout AI menu', () => {
-  it('exposes one research daily report entry without the retired daily insight entry', async () => {
+  it('exposes the daily research report as a direct first-level menu entry', async () => {
     const wrapper = mount(ShellLayout, {
       global: {
         stubs: {
@@ -29,6 +29,7 @@ describe('ShellLayout AI menu', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('投研日报')
+    expect(wrapper.text()).not.toContain('AI分析')
     expect(wrapper.text()).not.toContain('分析报告')
     expect(wrapper.text()).not.toContain('研究实验室')
     expect(wrapper.text()).not.toContain('每日投研')
