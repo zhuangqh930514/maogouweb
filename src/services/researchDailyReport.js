@@ -40,6 +40,14 @@ export function fetchResearchDailyReportItems(reportId, options = {}) {
   return request(`/api/ai/research-daily-reports/${reportId}/items?${params.toString()}`)
 }
 
+export function fetchResearchDailyReportIssues(reportId, options = {}) {
+  const params = new URLSearchParams({
+    page: String(options.page || 1),
+    pageSize: String(options.pageSize || 20),
+  })
+  return request(`/api/ai/research-daily-reports/${reportId}/issues?${params.toString()}`)
+}
+
 export function fetchResearchDailyReportFeedback(reportId) {
   return request(`/api/ai/research-daily-reports/${reportId}/feedback`)
 }

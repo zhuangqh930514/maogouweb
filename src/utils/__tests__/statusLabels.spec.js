@@ -12,6 +12,7 @@ describe('statusLabels', () => {
     expect(statusLabel('WATCHLIST')).toBe('自选股')
     expect(statusLabel('GLOBAL_HISTORICAL_BOOTSTRAP')).toBe('全局历史训练初始化')
     expect(statusLabel('MATURE_HISTORICAL_SAMPLE_LABELS')).toBe('生成历史成熟标签')
+    expect(statusLabel('HOLDING_RISK')).toBe('持仓风险')
     expect(statusLabel('REPLAY_0007')).toBe('历史回放第 7 批')
   })
 

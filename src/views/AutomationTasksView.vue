@@ -11,7 +11,7 @@
           :type="schedulerStatus?.autoClosePipelineEnabled ? 'danger' : 'primary'"
           :icon="schedulerStatus?.autoClosePipelineEnabled ? VideoPause : VideoPlay"
           :loading="toggling"
-          :disabled="schedulerStatus && !schedulerStatus.enabled"
+          :disabled="schedulerStatus && schedulerStatus.enabled === false"
           @click="toggleDailyAutomation"
         >
           {{ schedulerStatus?.autoClosePipelineEnabled ? '关闭每日自动投研' : '开启每日自动投研' }}
@@ -84,6 +84,83 @@
           <el-button text type="primary" @click="openResearchLab('models')">查看训练证据</el-button>
         </article>
       </div>
+    </section>
+
+    <section class="surface automation-pipeline-surface">
+      <div class="surface-header">
+        <div>
+          <h2 class="surface-title">研究流水线状态</h2>
+          <p class="surface-subtitle">分别查看全局研究和当前用户日报，不需要打开研究实验室逐项判断。</p>
+        </div>
+      </div>
+      <div class="pipeline-summary-grid">
+        <article v-for="item in pipelineSummaries" :key="item.key" class="pipeline-summary-card">
+          <div class="pipeline-summary-heading">
+            <strong>{{ item.title }}</strong>
+            <el-tag :type="statusTagType(item.summary?.status)" effect="plain" size="small">
+              {{ statusLabel(item.summary?.status, '尚未运行') }}
+            </el-tag>
+          </div>
+          <template v-if="item.summary">
+            <div class="pipeline-progress-row">
+              <span>完成进度</span>
+              <strong>{{ item.summary.progressPercent || 0 }}%</strong>
+            </div>
+            <el-progress
+              :percentage="Number(item.summary.progressPercent || 0)"
+              :status="progressStatus(item.summary.status)"
+              :stroke-width="8"
+              :show-text="false"
+            />
+            <dl class="pipeline-summary-metadata">
+              <div><dt>交易日</dt><dd>{{ item.summary.tradeDate || '-' }}</dd></div>
+              <div><dt>当前步骤</dt><dd>{{ statusLabel(item.summary.currentStep, '尚未开始') }}</dd></div>
+              <div><dt>处理进度</dt><dd>{{ item.summary.completedCount || 0 }} / {{ item.summary.processedCount || 0 }}</dd></div>
+              <div><dt>成功 / 失败</dt><dd>{{ item.summary.successCount || 0 }} / {{ item.summary.failedCount || 0 }}</dd></div>
+              <div><dt>耗时</dt><dd>{{ formatDuration(item.summary.durationMillis) }}</dd></div>
+              <div><dt>下次重试</dt><dd>{{ item.summary.nextRetryAt || '无需重试' }}</dd></div>
+            </dl>
+            <p v-if="item.summary.primaryFailureReason" class="pipeline-failure-reason">
+              首要失败原因：{{ localizeStatusText(item.summary.primaryFailureReason) }}
+            </p>
+            <p class="pipeline-summary-message">{{ localizeStatusText(item.summary.message || '') }}</p>
+          </template>
+          <el-empty v-else :image-size="48" description="暂无已落库运行记录" />
+        </article>
+      </div>
+
+      <div class="pipeline-trend-header">
+        <div>
+          <h3>最近 7 个交易日趋势</h3>
+          <p>只按已落库的交易日运行记录展示，缺少用户日报不会被解释成成功。</p>
+        </div>
+      </div>
+      <el-table :data="recentTrend" row-key="tradeDate" stripe empty-text="暂无交易日运行记录">
+        <el-table-column prop="tradeDate" label="交易日" width="126" />
+        <el-table-column label="全局研究" min-width="126">
+          <template #default="scope">
+            <el-tag :type="statusTagType(scope.row.globalStatus)" effect="plain" size="small">
+              {{ statusLabel(scope.row.globalStatus, '未生成') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="我的日报" min-width="126">
+          <template #default="scope">
+            <el-tag :type="statusTagType(scope.row.userDailyReportStatus)" effect="plain" size="small">
+              {{ statusLabel(scope.row.userDailyReportStatus, '未生成') }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="失败数" width="112">
+          <template #default="scope">{{ scope.row.globalFailedCount ?? '-' }} / {{ scope.row.userDailyReportFailedCount ?? '-' }}</template>
+        </el-table-column>
+        <el-table-column label="耗时" width="150">
+          <template #default="scope">{{ formatDuration(scope.row.globalDurationMillis) }} / {{ formatDuration(scope.row.userDailyReportDurationMillis) }}</template>
+        </el-table-column>
+        <el-table-column label="首要失败原因" min-width="300" show-overflow-tooltip>
+          <template #default="scope">{{ localizeStatusText(scope.row.primaryFailureReason, '-') }}</template>
+        </el-table-column>
+      </el-table>
     </section>
 
     <section class="surface automation-report-status">
@@ -174,6 +251,11 @@ const errorMessage = ref('')
 let statusPollTimer = null
 
 const latestReport = computed(() => schedulerStatus.value?.latestResearchDailyReport || null)
+const pipelineSummaries = computed(() => [
+  { key: 'globalResearch', title: '全局研究', summary: schedulerStatus.value?.globalResearch || null },
+  { key: 'userDailyReport', title: '我的投研日报', summary: schedulerStatus.value?.userDailyReport || null },
+])
+const recentTrend = computed(() => schedulerStatus.value?.recentTradingDayTrend || [])
 const dailyStatusText = computed(() => {
   if (!schedulerStatus.value) return '读取中'
   if (!schedulerStatus.value.enabled) return '系统调度未启用'
@@ -257,6 +339,21 @@ function openResearchLab(tab) {
 function formatDateTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '-'
 }
+
+function formatDuration(value) {
+  const milliseconds = Number(value)
+  if (!Number.isFinite(milliseconds) || milliseconds <= 0) return '-'
+  if (milliseconds < 1000) return `${milliseconds} 毫秒`
+  if (milliseconds < 60_000) return `${(milliseconds / 1000).toFixed(1)} 秒`
+  return `${(milliseconds / 60_000).toFixed(1)} 分钟`
+}
+
+function progressStatus(status) {
+  if (['FAILED', 'FAILED_FINAL'].includes(String(status || '').toUpperCase())) return 'exception'
+  if (String(status || '').toUpperCase() === 'PARTIAL_SUCCESS') return 'warning'
+  if (String(status || '').toUpperCase() === 'SUCCESS') return 'success'
+  return undefined
+}
 </script>
 
 <style scoped>
@@ -266,9 +363,126 @@ function formatDateTime(value) {
 
 .automation-heading,
 .automation-health,
+.automation-pipeline-surface,
 .automation-report-status,
 .automation-log-surface {
   box-shadow: none;
+}
+
+.automation-pipeline-surface {
+  padding-bottom: 22px;
+}
+
+.pipeline-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 22px 22px;
+}
+
+.pipeline-summary-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.pipeline-summary-heading,
+.pipeline-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pipeline-summary-heading strong {
+  color: #172033;
+  font-size: 15px;
+}
+
+.pipeline-progress-row {
+  margin: 18px 0 7px;
+  color: #738098;
+  font-size: 12px;
+}
+
+.pipeline-progress-row strong {
+  color: #263248;
+  font-size: 14px;
+}
+
+.pipeline-summary-metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin: 18px 0 0;
+}
+
+.pipeline-summary-metadata div {
+  min-width: 0;
+}
+
+.pipeline-summary-metadata dt,
+.pipeline-summary-metadata dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.pipeline-summary-metadata dt {
+  color: #738098;
+}
+
+.pipeline-summary-metadata dd {
+  overflow: hidden;
+  margin-top: 4px;
+  color: #263248;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pipeline-failure-reason,
+.pipeline-summary-message {
+  margin: 14px 0 0;
+  color: #8a4b08;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.pipeline-summary-message {
+  color: #5d687b;
+}
+
+.pipeline-summary-card :deep(.el-empty) {
+  padding: 22px 0 8px;
+}
+
+.pipeline-trend-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 22px 14px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.pipeline-trend-header h3 {
+  margin: 18px 0 0;
+  color: #172033;
+  font-size: 15px;
+}
+
+.pipeline-trend-header p {
+  margin: 6px 0 0;
+  color: #738098;
+  font-size: 12px;
+}
+
+.automation-pipeline-surface > :deep(.el-table) {
+  margin: 0 22px;
+  width: calc(100% - 44px);
 }
 
 .automation-heading {
@@ -437,6 +651,10 @@ function formatDateTime(value) {
     grid-template-columns: 1fr;
   }
 
+  .pipeline-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
   .automation-heading {
     flex-direction: column;
   }
@@ -462,6 +680,22 @@ function formatDateTime(value) {
 
   .latest-report-line {
     padding: 16px 14px;
+  }
+
+  .pipeline-summary-grid {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .pipeline-trend-header {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .automation-pipeline-surface > :deep(.el-table) {
+    margin-right: 14px;
+    margin-left: 14px;
+    width: calc(100% - 28px);
   }
 
   .latest-report-line dl {

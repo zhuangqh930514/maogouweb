@@ -93,20 +93,24 @@
             </el-table-column>
             <el-table-column label="最新价" width="110">
               <template #default="{ row }">
-                <span class="mono">{{ row.price.toFixed(2) }}</span>
+                <span class="mono">{{ formatQuotePrice(row.price) }}</span>
               </template>
             </el-table-column>
             <el-table-column label="涨跌幅" width="110">
               <template #default="{ row }">
-                <span :class="row.percent >= 0 ? 'up' : 'down'">
+                <span v-if="row.percent !== null" :class="row.percent >= 0 ? 'up' : 'down'">
                   {{ row.percent >= 0 ? '+' : '' }}{{ row.percent.toFixed(2) }}%
                 </span>
+                <span v-else class="muted">暂无</span>
               </template>
             </el-table-column>
-            <el-table-column prop="volumeRatio" label="量比" width="90" />
+            <el-table-column label="量比" width="90">
+              <template #default="{ row }">{{ formatNumberOrEmpty(row.volumeRatio) }}</template>
+            </el-table-column>
             <el-table-column label="AI评分" width="110">
               <template #default="{ row }">
-                <el-tag :class="row.aiScore >= 75 ? 'tag-red' : 'tag-blue'" effect="plain">{{ row.aiScore }}</el-tag>
+                <el-tag v-if="row.aiScore !== null" :class="row.aiScore >= 75 ? 'tag-red' : 'tag-blue'" effect="plain">{{ row.aiScore }}</el-tag>
+                <span v-else class="muted">暂无</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="86" align="right">
@@ -141,15 +145,18 @@
           <div>
             <h2 class="surface-title">个股详情预览</h2>
           </div>
-          <el-tag class="tag-blue" effect="plain">AI评分 {{ selected.aiScore }}</el-tag>
+          <el-tag class="tag-blue" effect="plain">AI评分 {{ selected.aiScore ?? '暂无' }}</el-tag>
         </div>
         <div v-loading="detailLoading" class="surface-body detail-panel">
           <div class="stock-heading">
             <div>
               <h3>{{ selected.name }} <span>{{ selected.code }}</span></h3>
-              <div class="stock-price" :class="selected.percent >= 0 ? 'up' : 'down'">
-                {{ selected.price.toFixed(2) }}
-                {{ selected.percent >= 0 ? '+' : '' }}{{ selected.percent.toFixed(2) }}%
+              <div class="stock-price" :class="selected.percent === null ? '' : (selected.percent >= 0 ? 'up' : 'down')">
+                {{ formatQuotePrice(selected.price) }}
+                <template v-if="selected.percent !== null">
+                  {{ selected.percent >= 0 ? '+' : '' }}{{ selected.percent.toFixed(2) }}%
+                </template>
+                <span v-else class="muted">暂无真实行情</span>
               </div>
             </div>
             <el-tag class="tag-blue" effect="plain">{{ selected.advice }}</el-tag>
@@ -192,7 +199,7 @@ import { klineOption, lineOption } from '../services/chartOptions'
 import { fetchStockDetail, searchStocks } from '../services/stocks'
 import {
   addWatchStock,
-  fetchWatchlist,
+  fetchWatchlistCodes,
   fetchWatchlistPage,
   pinWatchStock,
   removeWatchStocks,
@@ -422,8 +429,7 @@ async function handleTableDrop(event) {
     return
   }
   try {
-    const allStocks = (await fetchWatchlist()).map(normalizeStock)
-    const codes = allStocks.map((item) => item.code)
+    const codes = await fetchWatchlistCodes()
     const sourceIndex = codes.indexOf(sourceCode)
     const destinationIndex = codes.indexOf(target.code)
     if (sourceIndex < 0 || destinationIndex < 0) {
@@ -453,21 +459,33 @@ async function togglePinned(row) {
 function normalizeStock(item) {
   return {
     ...item,
-    price: Number(item.price || 0),
-    percent: Number(item.percent || 0),
-    volumeRatio: Number(item.volumeRatio || 0),
-    aiScore: Number(item.aiScore || 0),
-    pe: Number(item.pe || 0),
-    pb: Number(item.pb || 0),
-    revenueGrowth: Number(item.revenueGrowth || 0),
-    profitGrowth: Number(item.profitGrowth || 0),
+    price: numberOrNull(item.price),
+    percent: numberOrNull(item.percent),
+    volumeRatio: numberOrNull(item.volumeRatio),
+    aiScore: numberOrNull(item.aiScore),
+    pe: numberOrNull(item.pe),
+    pb: numberOrNull(item.pb),
+    revenueGrowth: numberOrNull(item.revenueGrowth),
+    profitGrowth: numberOrNull(item.profitGrowth),
     pinned: item.pinned === true || Number(item.pinned) === 1,
   }
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function formatQuotePrice(value) {
+  return value === null ? '暂无' : value.toFixed(2)
+}
+
 function formatPercent(value) {
-  const number = Number(value || 0)
-  if (!number) {
+  const number = numberOrNull(value)
+  if (number === null) {
     return '暂无'
   }
   return `${number >= 0 ? '+' : ''}${number.toFixed(2)}%`

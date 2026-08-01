@@ -5,9 +5,10 @@
         <div class="metric-title">{{ title }}</div>
         <div class="metric-value mono">{{ value }}</div>
       </div>
-      <el-tag :class="positive ? 'tag-red' : 'tag-green'" effect="plain" round>
+      <el-tag v-if="hasPercent" :class="positive ? 'tag-red' : 'tag-green'" effect="plain" round>
         {{ changeText }}
       </el-tag>
+      <el-tag v-else type="info" effect="plain" round>暂无</el-tag>
     </div>
     <MiniTrend v-if="showTrend" :data="trend" :positive="positive" />
   </div>
@@ -21,14 +22,21 @@ const props = defineProps({
   title: { type: String, required: true },
   value: { type: [String, Number], required: true },
   change: { type: Number, default: 0 },
-  percent: { type: Number, default: 0 },
+  percent: { type: [Number, String], default: null },
   trend: { type: Array, default: () => [] },
   compact: { type: Boolean, default: false },
   showTrend: { type: Boolean, default: true },
 })
 
-const positive = computed(() => props.percent >= 0)
-const changeText = computed(() => `${props.percent >= 0 ? '+' : ''}${props.percent.toFixed(2)}%`)
+const normalizedPercent = computed(() => {
+  const value = Number(props.percent)
+  return Number.isFinite(value) ? value : null
+})
+const hasPercent = computed(() => normalizedPercent.value !== null)
+const positive = computed(() => normalizedPercent.value !== null && normalizedPercent.value >= 0)
+const changeText = computed(() => normalizedPercent.value === null
+  ? '暂无'
+  : `${positive.value ? '+' : ''}${normalizedPercent.value.toFixed(2)}%`)
 </script>
 
 <style scoped>

@@ -394,7 +394,7 @@ function formatAmount(value) {
   return number ? `${(number / 100000000).toFixed(2)}亿` : '暂无'
 }
 
-function emptySourceState(status = 'REALTIME', message = '') {
+function emptySourceState(status = 'UNAVAILABLE', message = '') {
   return {
     sourceStatus: status,
     source: '',
@@ -406,11 +406,11 @@ function emptySourceState(status = 'REALTIME', message = '') {
 
 function normalizeSourceState(data, fallbackMessage) {
   return {
-    sourceStatus: String(data?.sourceStatus || 'REALTIME').toUpperCase(),
+    sourceStatus: String(data?.sourceStatus || 'UNAVAILABLE').toUpperCase(),
     source: data?.source || 'EASTMONEY',
     sourceUpdatedAt: data?.sourceUpdatedAt || data?.updatedAt || '',
     servedAt: data?.servedAt || '',
-    message: data?.message || fallbackMessage,
+    message: data?.message || fallbackMessage || '数据源状态暂未确认',
   }
 }
 

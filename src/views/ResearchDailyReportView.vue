@@ -99,6 +99,26 @@
             <em>共 {{ activeReport.content?.insightSummary?.itemCount || 0 }} 只股票进入日报</em>
           </div>
         </div>
+
+        <section v-if="runStates.globalResearch || runStates.userProjection" class="research-run-grid">
+          <article v-for="run in [runStates.globalResearch, runStates.userProjection].filter(Boolean)" :key="`${run.pipelineType}-${run.runId}`" class="research-run-card">
+            <div class="research-run-card-head">
+              <div>
+                <span>{{ run.pipelineType === 'GLOBAL_DAILY_RESEARCH' ? '全局研究' : '我的日报投影' }}</span>
+                <strong>{{ statusLabel(run.status, '待确认') }}</strong>
+              </div>
+              <el-tag :type="runStatusType(run.status)" effect="plain">运行 #{{ run.runId }}</el-tag>
+            </div>
+            <p>{{ run.currentStep ? `当前步骤：${statusLabel(run.currentStep, run.currentStep)}` : '没有记录当前步骤' }}</p>
+            <dl>
+              <div><dt>处理</dt><dd>{{ run.processedCount || 0 }}</dd></div>
+              <div><dt>成功</dt><dd>{{ run.successCount || 0 }}</dd></div>
+              <div><dt>失败</dt><dd>{{ run.failedCount || 0 }}</dd></div>
+              <div><dt>重试</dt><dd>{{ run.retryCount || 0 }}</dd></div>
+            </dl>
+            <small v-if="run.errorMessage">{{ localizeStatusText(run.errorMessage) }}</small>
+          </article>
+        </section>
       </div>
     </section>
 
@@ -124,6 +144,40 @@
             :closable="false"
             class="failed-report-alert"
           />
+
+          <section v-if="issueItems.length || issueTotal" class="pipeline-issue-summary">
+            <div class="section-headline compact">
+              <div>
+                <h3>数据问题明细</h3>
+                <p>只展示已落库的步骤、股票、数据源和重试原因，不用日志猜测失败。</p>
+              </div>
+              <el-button size="small" @click="loadIssueDetails">刷新明细</el-button>
+            </div>
+            <div v-if="issueItems.length" class="pipeline-issue-list">
+              <div v-for="issue in issueItems" :key="issue.id" class="pipeline-issue-item">
+                <div class="pipeline-issue-title">
+                  <strong>{{ issue.stockName || issue.stockCode || '批次级问题' }}</strong>
+                  <span v-if="issue.stockCode" class="mono">{{ issue.stockCode }}</span>
+                  <el-tag size="small" :type="issue.recoverable ? 'warning' : 'danger'" effect="plain">
+                    {{ issue.recoverable ? '可重试' : '需人工处理' }}
+                  </el-tag>
+                </div>
+                <p>{{ statusLabel(issue.stepKey, issue.stepKey) }} · {{ issue.providerCode || '未记录提供方' }} · {{ issue.reasonCode }}</p>
+                <p class="pipeline-issue-cause">{{ issue.reasonMessage }}</p>
+                <small>已重试 {{ issue.retryCount || 0 }} / {{ issue.maxRetries || 0 }} 次 · 下次 {{ formatDateTime(issue.nextRetryAt) }}</small>
+              </div>
+            </div>
+            <el-empty v-else description="当前日报没有结构化失败明细" />
+            <el-pagination
+              v-if="issueTotal > issuePageSize"
+              :current-page="issuePage"
+              :page-size="issuePageSize"
+              :total="issueTotal"
+              small
+              layout="prev, pager, next"
+              @current-change="loadIssueDetails"
+            />
+          </section>
 
           <el-alert
             v-else-if="!activeReport.content?.insightSummary?.snapshotId"
@@ -475,6 +529,7 @@ import {
   fetchResearchDailyReportDetail,
   fetchResearchDailyReportFeedback,
   fetchResearchDailyReportHistory,
+  fetchResearchDailyReportIssues,
   fetchResearchDailyReportItems,
   fetchResearchDailyReportOverview,
   rebuildResearchDailyReport,
@@ -493,12 +548,17 @@ const historyTotal = ref(0)
 const historyTotalPages = ref(0)
 const activeReport = ref(null)
 const nextAutoRunAt = ref(null)
+const runStates = ref({ globalResearch: null, userProjection: null })
 const serverDailyChanges = ref([])
 const errorMessage = ref('')
 const expandedDecisionSections = ref([])
 const watchQuery = ref({ keyword: '', action: '', sort: 'SYSTEM_SCORE_DESC' })
 const watchItems = ref(emptyDecisionPage())
 const unavailableItems = ref(emptyDecisionPage())
+const issueItems = ref([])
+const issueTotal = ref(0)
+const issuePage = ref(1)
+const issuePageSize = 20
 const feedbackByStock = ref({})
 const feedbackLoadingStock = ref('')
 const advancedMode = computed(() => typeof localStorage !== 'undefined'
@@ -511,6 +571,10 @@ async function loadReports() {
     const overview = await fetchResearchDailyReportOverview(20)
     activeReport.value = overview?.report || null
     nextAutoRunAt.value = overview?.nextAutoRunAt || null
+    runStates.value = {
+      globalResearch: overview?.globalResearch || null,
+      userProjection: overview?.userProjection || null,
+    }
     try {
       const history = await fetchResearchDailyReportHistory({ page: 1, pageSize: historyPageSize.value })
       applyHistory(history, overview?.history || [])
@@ -519,6 +583,9 @@ async function loadReports() {
     }
     serverDailyChanges.value = overview?.dailyChanges || []
     resetDecisionPages()
+    issueItems.value = []
+    issueTotal.value = 0
+    void loadIssueDetails(1)
     void loadFeedback(activeReport.value?.id)
   } catch (error) {
     errorMessage.value = error.message || '投研日报加载失败'
@@ -528,6 +595,9 @@ async function loadReports() {
     historyTotalPages.value = 0
     serverDailyChanges.value = []
     nextAutoRunAt.value = null
+    runStates.value = { globalResearch: null, userProjection: null }
+    issueItems.value = []
+    issueTotal.value = 0
   } finally {
     loading.value = false
   }
@@ -649,6 +719,22 @@ async function loadDecisionItems(category, page = 1) {
   }
 }
 
+async function loadIssueDetails(page = 1) {
+  const reportId = activeReport.value?.id
+  if (!reportId) return
+  try {
+    const response = await fetchResearchDailyReportIssues(reportId, { page, pageSize: issuePageSize })
+    if (activeReport.value?.id !== reportId) return
+    issueItems.value = response?.items || []
+    issueTotal.value = Number(response?.total || 0)
+    issuePage.value = Number(response?.page || page)
+  } catch (error) {
+    errorMessage.value = error.message || '失败明细加载失败'
+    issueItems.value = []
+    issueTotal.value = 0
+  }
+}
+
 function loadWatchItems(page) {
   loadDecisionItems('CAUTIOUS', page)
 }
@@ -680,7 +766,11 @@ async function loadDetail(reportId) {
   try {
     activeReport.value = await fetchResearchDailyReportDetail(reportId)
     serverDailyChanges.value = []
+    runStates.value = { globalResearch: null, userProjection: null }
     resetDecisionPages()
+    issueItems.value = []
+    issueTotal.value = 0
+    void loadIssueDetails(1)
     void loadFeedback(activeReport.value?.id)
   } catch (error) {
     errorMessage.value = error.message || '日报详情加载失败'
@@ -841,6 +931,14 @@ function statusClass(value) {
     FAILED_PIPELINE: 'danger',
     FAILED: 'danger',
   }[value] || 'warn'
+}
+
+function runStatusType(value) {
+  const status = String(value || '').toUpperCase()
+  if (['SUCCESS', 'READY'].includes(status)) return 'success'
+  if (['PARTIAL_SUCCESS', 'WAITING_SOURCE', 'FAILED_RECOVERABLE'].includes(status)) return 'warning'
+  if (['FAILED', 'FAILED_FINAL'].includes(status)) return 'danger'
+  return 'info'
 }
 
 onMounted(async () => {
@@ -1287,6 +1385,80 @@ onMounted(async () => {
   gap: 12px;
 }
 
+.research-run-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.research-run-card {
+  padding: 14px 16px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.research-run-card-head,
+.pipeline-issue-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.research-run-card-head span,
+.research-run-card p,
+.research-run-card small,
+.pipeline-issue-item p,
+.pipeline-issue-item small {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.research-run-card-head span,
+.research-run-card-head strong {
+  display: block;
+}
+
+.research-run-card-head strong {
+  margin-top: 5px;
+  color: #111827;
+}
+
+.research-run-card p { margin: 12px 0 8px; }
+.research-run-card small { display: block; margin-top: 9px; overflow-wrap: anywhere; }
+.research-run-card dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.research-run-card dt { color: #64748b; font-size: 11px; }
+.research-run-card dd { margin: 3px 0 0; color: #111827; font-weight: 700; }
+
+.pipeline-issue-summary {
+  margin: 18px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff7f7;
+}
+
+.pipeline-issue-list { display: grid; gap: 8px; }
+.pipeline-issue-item {
+  padding: 11px 12px;
+  border: 1px solid #fee2e2;
+  border-radius: 7px;
+  background: #fff;
+}
+.pipeline-issue-title { justify-content: flex-start; }
+.pipeline-issue-title span { color: #64748b; font-size: 12px; }
+.pipeline-issue-item p { margin: 7px 0 0; }
+.pipeline-issue-item .pipeline-issue-cause { color: #374151; overflow-wrap: anywhere; }
+.pipeline-issue-item small { display: block; margin-top: 7px; }
+.pipeline-issue-summary :deep(.el-pagination) { justify-content: center; margin-top: 12px; }
+
 .ok { color: #15803d !important; }
 .warn { color: #b45309 !important; }
 .danger { color: #dc2626 !important; }
@@ -1344,6 +1516,14 @@ onMounted(async () => {
 
   .automation-summary {
     grid-template-columns: 1fr;
+  }
+
+  .research-run-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .research-run-card dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .header-actions :deep(.el-button) {

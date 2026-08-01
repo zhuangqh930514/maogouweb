@@ -205,10 +205,16 @@ const RATIO_FIELDS = new Set([
   'probabilityError',
   'probabilityUp',
   'rankIc',
-  'successRate',
   'totalReturn',
   'turnoverRate',
+])
+
+// Research factor performance stores percentage points (for example 60.38),
+// while probability and return fields use ratios (for example 0.6038).
+const PERCENT_POINT_FIELDS = new Set([
+  'successRate',
   'wilsonLowerBound',
+  'calibratedConfidence',
 ])
 
 const BOOLEAN_FIELDS = new Set(['actionEffective', 'directionCorrect', 'enabled'])
@@ -222,6 +228,7 @@ export function formatResearchValue(key, value) {
   if (BOOLEAN_FIELDS.has(key)) return Number(value) === 1 || value === true ? '是' : '否'
   if (key === 'confidenceLevel') return confidenceLabel(value)
   if (STATUS_FIELDS.has(key)) return statusLabel(value)
+  if (PERCENT_POINT_FIELDS.has(key)) return formatPercent(value)
   if (RATIO_FIELDS.has(key)) return formatRatio(value)
   if (typeof value === 'object') return JSON.stringify(value, null, 2)
   if (/At$|Time$/.test(key)) return String(value).replace('T', ' ').slice(0, 19)
@@ -237,6 +244,12 @@ export function formatRatio(value) {
   const number = Number(value)
   if (!Number.isFinite(number)) return '-'
   return `${(number * 100).toFixed(2)}%`
+}
+
+export function formatPercent(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return '-'
+  return `${number.toFixed(2)}%`
 }
 
 export function statusTagType(value) {

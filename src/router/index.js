@@ -14,6 +14,7 @@ const PromptTemplatesView = () => import('../views/PromptTemplatesView.vue')
 const ChatView = () => import('../views/ChatView.vue')
 const LoginView = () => import('../views/LoginView.vue')
 const RegisterView = () => import('../views/RegisterView.vue')
+const NotFoundView = () => import('../views/NotFoundView.vue')
 
 const routes = [
   { path: '/login', name: 'login', component: LoginView, meta: { title: '登录猫狗智投', layout: 'auth', public: true } },
@@ -30,6 +31,7 @@ const routes = [
   { path: '/prompt-templates', name: 'promptTemplates', component: PromptTemplatesView, meta: { title: '提示词管理', advanced: true } },
   { path: '/automation-tasks', name: 'automationTasks', component: AutomationTasksView, meta: { title: '自动化任务', advanced: true } },
   { path: '/chat', name: 'chat', component: ChatView, meta: { title: '猫狗投研助手' } },
+  { path: '/:pathMatch(.*)*', name: 'notFound', component: NotFoundView, meta: { title: '页面不存在' } },
 ]
 
 const router = createRouter({

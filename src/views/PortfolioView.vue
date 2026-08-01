@@ -46,16 +46,25 @@
             </el-table-column>
             <el-table-column prop="quantity" label="数量" width="90" />
             <el-table-column label="现价" width="110">
-              <template #default="{ row }">{{ row.currentPrice.toFixed(2) }}</template>
+              <template #default="{ row }">{{ formatQuotePrice(row.currentPrice) }}</template>
             </el-table-column>
             <el-table-column label="市值" width="120">
               <template #default="{ row }">{{ formatMoney(row.marketValue) }}</template>
             </el-table-column>
             <el-table-column label="浮动盈亏" width="130">
               <template #default="{ row }">
-                <span :class="row.profit >= 0 ? 'up' : 'down'">
+                <span v-if="row.profit !== null" :class="row.profit >= 0 ? 'up' : 'down'">
                   {{ row.profit >= 0 ? '+' : '' }}{{ formatMoney(row.profit) }}
                 </span>
+                <span v-else class="muted">暂无真实行情</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="行情状态" min-width="120">
+              <template #default="{ row }">
+                <el-tag v-if="row.calculationStatus === 'AVAILABLE'" type="success" effect="plain">已计价</el-tag>
+                <el-tooltip v-else :content="row.unavailableReason || '暂无真实行情'" placement="top">
+                  <el-tag type="warning" effect="plain">暂不可用</el-tag>
+                </el-tooltip>
               </template>
             </el-table-column>
           </el-table>
@@ -150,7 +159,7 @@ const batchDeleting = ref(false)
 const stockKeyword = ref('')
 const selectedStock = ref(null)
 const selectedRows = ref([])
-const summary = ref({ totalCost: 0, totalMarketValue: 0, totalProfit: 0, profitRate: 0, positions: [] })
+const summary = ref({ totalCost: 0, totalMarketValue: null, totalProfit: null, profitRate: null, positions: [] })
 const positionRows = computed(() => (summary.value.positions || []).map(normalizePosition))
 const positionPage = ref(1)
 const positionPageSize = ref(50)
@@ -158,13 +167,13 @@ const positionTotal = computed(() => Number(summary.value.positionTotal || 0))
 let refreshTimer = null
 let initialQuoteRefreshTimer = null
 
-const totalMarketValue = computed(() => Number(summary.value.totalMarketValue || 0))
+const totalMarketValue = computed(() => summary.value.totalMarketValue)
 const totalCost = computed(() => Number(summary.value.totalCost || 0))
-const totalProfit = computed(() => Number(summary.value.totalProfit || 0))
+const totalProfit = computed(() => summary.value.totalProfit)
 const totalAsset = computed(() => totalMarketValue.value)
-const profitRate = computed(() => Number(summary.value.profitRate || 0))
-const todayProfit = computed(() => Number(summary.value.todayProfit || 0))
-const todayProfitRate = computed(() => Number(summary.value.todayProfitRate || 0))
+const profitRate = computed(() => summary.value.profitRate)
+const todayProfit = computed(() => summary.value.todayProfit)
+const todayProfitRate = computed(() => summary.value.todayProfitRate)
 
 const tradeForm = reactive({
   code: '',
@@ -277,17 +286,32 @@ function normalizePosition(item) {
     ...item,
     buyPrice: Number(item.buyPrice || 0),
     quantity: Number(item.quantity || 0),
-    currentPrice: Number(item.currentPrice || 0),
-    cost: Number(item.cost || 0),
-    marketValue: Number(item.marketValue || 0),
-    profit: Number(item.profit || 0),
-    profitRate: Number(item.profitRate || 0),
-    todayProfit: Number(item.todayProfit || 0),
-    todayProfitRate: Number(item.todayProfitRate || 0),
+    currentPrice: numberOrNull(item.currentPrice),
+    cost: numberOrNull(item.cost),
+    marketValue: numberOrNull(item.marketValue),
+    profit: numberOrNull(item.profit),
+    profitRate: numberOrNull(item.profitRate),
+    todayProfit: numberOrNull(item.todayProfit),
+    todayProfitRate: numberOrNull(item.todayProfitRate),
   }
 }
 
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function formatQuotePrice(value) {
+  return value === null ? '暂无' : value.toFixed(2)
+}
+
 function formatMoney(value) {
+  if (value === null || value === undefined || value === '') {
+    return '暂无'
+  }
   return Number(value || 0).toLocaleString('zh-CN', {
     minimumFractionDigits: Number(value || 0) % 1 === 0 ? 0 : 2,
     maximumFractionDigits: 2,
@@ -295,6 +319,9 @@ function formatMoney(value) {
 }
 
 function formatSignedMoney(value) {
+  if (value === null || value === undefined || value === '') {
+    return '暂无'
+  }
   const number = Number(value || 0)
   return `${number >= 0 ? '+' : ''}${formatMoney(number)}`
 }

@@ -160,6 +160,7 @@ import { statusLabel } from '../../utils/statusLabels'
 import {
   confidenceLabel,
   detailJson,
+  formatPercent,
   formatRatio,
   formatResearchValue,
   researchFieldLabel,
@@ -276,6 +277,7 @@ async function openDetail(item) {
 }
 
 function formatCell(column, value) {
+  if (column.kind === 'percent') return formatPercent(value)
   if (column.kind === 'ratio') return formatRatio(value)
   if (column.kind === 'boolean') return Number(value) === 1 || value === true ? '是' : '否'
   if (column.kind === 'horizon') return value ? `T+${value}` : '-'

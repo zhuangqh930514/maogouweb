@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ResearchDailyReportView from '../ResearchDailyReportView.vue'
 import {
   fetchResearchDailyReportHistory,
+  fetchResearchDailyReportIssues,
   fetchResearchDailyReportOverview,
 } from '../../services/researchDailyReport'
 
@@ -23,6 +24,7 @@ vi.mock('../../services/researchDailyReport', () => ({
   fetchResearchDailyReportHistory: vi.fn(),
   fetchResearchDailyReportDetail: vi.fn(),
   fetchResearchDailyReportItems: vi.fn(),
+  fetchResearchDailyReportIssues: vi.fn(),
   fetchResearchDailyReportFeedback: vi.fn().mockResolvedValue([]),
   rebuildResearchDailyReport: vi.fn(),
   submitResearchDailyReportFeedback: vi.fn(),
@@ -120,6 +122,11 @@ async function mountView(latest, history = latest ? [latest] : []) {
     },
   })
   await flushPromises()
+  if (latest) {
+    expect(fetchResearchDailyReportIssues).toHaveBeenCalledWith(1, { page: 1, pageSize: 20 })
+  } else {
+    expect(fetchResearchDailyReportIssues).not.toHaveBeenCalled()
+  }
   return wrapper
 }
 
