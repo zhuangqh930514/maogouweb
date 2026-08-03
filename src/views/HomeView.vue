@@ -3,6 +3,12 @@
     <NewsTicker :items="newsItems" @select="openNews" />
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false" />
 
+    <div class="market-status-line" role="status">
+      <span class="market-status-label">行情状态</span>
+      <el-tag :type="marketStatusTagType" effect="plain">{{ marketStatusText }}</el-tag>
+      <span>{{ marketStatusMessage }}</span>
+    </div>
+
     <div v-loading="marketLoading" class="home-index-grid">
       <MetricCard
         v-for="item in marketIndexes"
@@ -22,26 +28,29 @@
           <div>
             <h2 class="surface-title">涨跌分布</h2>
           </div>
-          <el-tag :type="sourceTagType(marketBreadth.sourceStatus)" effect="plain">
+          <el-tag v-if="marketLoading" type="info" effect="plain">加载中</el-tag>
+          <el-tag v-else :type="sourceTagType(marketBreadth.sourceStatus)" effect="plain">
             {{ sourceStatusText(marketBreadth.sourceStatus) }}
           </el-tag>
         </div>
         <div v-loading="marketLoading" class="surface-body breadth-panel">
-          <el-alert
-            v-if="marketBreadth.sourceStatus === 'UNAVAILABLE' && !marketLoading"
-            type="error"
-            :title="sourceMessage(marketBreadth, '涨跌分布数据源异常，暂不展示数据')"
-            show-icon
-            :closable="false"
-          />
+          <el-skeleton v-if="marketLoading" :rows="5" animated />
           <template v-else>
             <el-alert
-              v-if="marketBreadth.sourceStatus === 'STALE'"
-              type="warning"
-              :title="sourceMessage(marketBreadth, '涨跌分布为上次成功数据，当前不是实时数据')"
+              v-if="marketBreadth.sourceStatus === 'UNAVAILABLE'"
+              type="error"
+              :title="sourceMessage(marketBreadth, '涨跌分布数据源异常，暂不展示数据')"
               show-icon
               :closable="false"
             />
+            <template v-else>
+              <el-alert
+                v-if="marketBreadth.sourceStatus === 'STALE' || marketSourceStatus(marketBreadth.sourceStatus) === 'RECENT_CLOSE'"
+                type="warning"
+                :title="sourceMessage(marketBreadth, '涨跌分布为上次成功数据，当前不是实时数据')"
+                show-icon
+                :closable="false"
+              />
             <div class="breadth-bars">
               <div
                 v-for="bucket in marketBreadth.buckets"
@@ -84,6 +93,7 @@
               <span class="flat" :style="{ flex: marketBreadth.fundFlatCount || 1 }"></span>
               <span class="up" :style="{ flex: marketBreadth.fundInCount || 1 }"></span>
             </div>
+            </template>
           </template>
         </div>
       </section>
@@ -120,13 +130,14 @@
             <h2 class="surface-title">市场前十热度股票</h2>
             <p class="surface-subtitle">按全市场主力净流入热度排序展示</p>
           </div>
-          <el-tag :type="sourceTagType(marketHotStocksSource.sourceStatus)" effect="plain">
+          <el-tag v-if="marketLoading" type="info" effect="plain">加载中</el-tag>
+          <el-tag v-else :type="sourceTagType(marketHotStocksSource.sourceStatus)" effect="plain">
             {{ sourceStatusText(marketHotStocksSource.sourceStatus) }}
           </el-tag>
         </div>
         <div class="surface-body">
           <el-alert
-            v-if="marketHotStocksSource.sourceStatus !== 'REALTIME'"
+            v-if="marketSourceStatus(marketHotStocksSource.sourceStatus) !== 'REALTIME' && !marketLoading"
             class="source-alert"
             :type="sourceAlertType(marketHotStocksSource.sourceStatus)"
             :title="sourceMessage(marketHotStocksSource, '市场热度股票数据源异常，暂不展示演示数据')"
@@ -143,7 +154,7 @@
             </el-table-column>
             <el-table-column label="现价" width="110">
               <template #default="{ row }">
-                <span class="mono">{{ row.price.toFixed(2) }}</span>
+                <span class="mono">{{ formatQuotePrice(row.price) }}</span>
               </template>
             </el-table-column>
             <el-table-column label="涨跌幅" width="110">
@@ -232,9 +243,14 @@ import { fetchLatestAiReport } from '../services/ai'
 import { fetchHomeOverview } from '../services/home'
 import { fetchLatestNews, fetchMarketBreadth, fetchMarketIndexes, fetchMarketHotStocks } from '../services/market'
 import { addWatchStock } from '../services/watchlist'
-import { isAshareMarketOpen } from '../utils/marketTime'
+import {
+  ashareMarketStatus,
+  isAshareMarketOpen,
+  marketSourceStatus,
+  marketSourceStatusText,
+} from '../utils/marketTime'
 
-const marketLoading = ref(false)
+const marketLoading = ref(true)
 const newsLoading = ref(false)
 const errorMessage = ref('')
 const marketIndexes = ref([])
@@ -247,12 +263,33 @@ const watchlistCodes = ref(new Set())
 const addingCodes = ref(new Set())
 const newsReaderVisible = ref(false)
 const activeNews = ref(null)
+const marketClock = ref(Date.now())
 const activeNewsUrl = computed(() => normalizeNewsUrl(activeNews.value?.url))
 const latestReport = computed(() => aiReports.value[0])
 const maxBucketCount = computed(() => Math.max(1, ...marketBreadth.value.buckets.map((item) => item.count)))
+const marketStatusText = computed(() => {
+  if (marketLoading.value) return '加载中'
+  return marketSourceStatusText(marketBreadth.value.sourceStatus, new Date(marketClock.value))
+})
+const marketStatusTagType = computed(() => {
+  if (marketLoading.value) return 'info'
+  const status = marketSourceStatus(marketBreadth.value.sourceStatus, new Date(marketClock.value))
+  return status === 'UNAVAILABLE' ? 'danger' : status === 'REALTIME' ? 'success' : 'warning'
+})
+const marketStatusMessage = computed(() => {
+  if (marketLoading.value) return '正在读取指数和涨跌分布，暂不展示未确认的零值。'
+  const date = new Date(marketClock.value)
+  const status = marketSourceStatus(marketBreadth.value.sourceStatus, date)
+  const context = sourceContext(marketBreadth.value)
+  if (status === 'UNAVAILABLE') return '核心行情数据源暂不可用，页面不会使用演示数据。'
+  if (status === 'RECENT_CLOSE') return `${ashareMarketStatus(date)}，当前展示最近一次真实收盘数据${context}`
+  if (status === 'STALE') return `行情源异常，当前展示已明确标记的历史真实缓存${context}`
+  return `行情源已连接，数据按交易时段刷新${context}`
+})
 let refreshTimer = null
 let breadthRefreshTimer = null
 let newsRefreshTimer = null
+let marketClockTimer = null
 
 async function loadNews() {
   newsLoading.value = true
@@ -451,10 +488,20 @@ function normalizeHotStock(item) {
   return {
     ...item,
     rank: Number(item.rank || 0),
-    price: Number(item.price || 0),
-    percent: Number(item.percent || 0),
-    netInflow: Number(item.netInflow || 0),
+    price: numberOrNull(item.price),
+    percent: numberOrNull(item.percent),
+    netInflow: numberOrNull(item.netInflow),
   }
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function formatQuotePrice(value) {
+  return value === null ? '暂无' : value.toFixed(2)
 }
 
 function emptySourceState(status = 'UNAVAILABLE', message = '') {
@@ -478,19 +525,13 @@ function normalizeSourceState(data, fallbackMessage) {
 }
 
 function sourceStatusText(status) {
-  return {
-    REALTIME: '实时',
-    STALE: '非实时',
-    UNAVAILABLE: '数据源异常',
-  }[status] || status || '-'
+  if (marketLoading.value) return '加载中'
+  return marketSourceStatusText(status, new Date(marketClock.value))
 }
 
 function sourceTagType(status) {
-  return {
-    REALTIME: 'success',
-    STALE: 'warning',
-    UNAVAILABLE: 'danger',
-  }[status] || 'info'
+  const normalized = marketSourceStatus(status, new Date(marketClock.value))
+  return normalized === 'REALTIME' ? 'success' : normalized === 'UNAVAILABLE' ? 'danger' : 'warning'
 }
 
 function sourceAlertType(status) {
@@ -512,16 +553,35 @@ function formatDateTime(value) {
 function sourceMessage(sourceState, fallback) {
   const updatedAt = formatDateTime(sourceState.sourceUpdatedAt)
   const suffix = updatedAt === '-' ? '' : `，上次更新时间：${updatedAt}`
+  const date = new Date(marketClock.value)
+  const normalized = marketSourceStatus(sourceState.sourceStatus, date)
+  if (normalized === 'RECENT_CLOSE') {
+    return `${ashareMarketStatus(date)}，当前展示最近收盘数据${suffix}`
+  }
+  if (normalized === 'STALE' && !isAshareMarketOpen(date)) {
+    return `${ashareMarketStatus(date)}，当前使用非实时数据${suffix}`
+  }
   return `${sourceState.message || fallback}${suffix}`
 }
 
+function sourceContext(sourceState) {
+  const source = sourceState?.source || ''
+  const updatedAt = formatDateTime(sourceState?.sourceUpdatedAt)
+  const parts = []
+  if (source) parts.push(`数据源：${source}`)
+  if (updatedAt !== '-') parts.push(`数据时间：${updatedAt}`)
+  return parts.length ? `（${parts.join('；')}）` : '。'
+}
+
 function formatPercent(value) {
-  const number = Number(value || 0)
+  const number = numberOrNull(value)
+  if (number === null) return '暂无'
   return `${number >= 0 ? '+' : ''}${number.toFixed(2)}%`
 }
 
 function formatNetInflow(value) {
-  const number = Number(value || 0)
+  const number = numberOrNull(value)
+  if (number === null) return '暂无'
   if (!number) {
     return '资金持平'
   }
@@ -549,6 +609,9 @@ function normalizeNewsUrl(url) {
 
 onMounted(() => {
   loadHomeOverview()
+  marketClockTimer = window.setInterval(() => {
+    marketClock.value = Date.now()
+  }, 30_000)
   refreshTimer = window.setInterval(() => {
     if (isAshareMarketOpen()) {
       loadMarketIndexes()
@@ -576,6 +639,9 @@ onUnmounted(() => {
   if (newsRefreshTimer) {
     window.clearInterval(newsRefreshTimer)
   }
+  if (marketClockTimer) {
+    window.clearInterval(marketClockTimer)
+  }
 })
 </script>
 
@@ -584,6 +650,22 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
+}
+
+.market-status-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 28px;
+  margin: 10px 0 14px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.market-status-label {
+  color: #1f2937;
+  font-weight: 700;
 }
 
 .news-list {

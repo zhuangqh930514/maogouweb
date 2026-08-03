@@ -177,11 +177,18 @@ describe('ResearchDailyReportView', () => {
 
   it('shows the next automatic run while keeping technical controls out of normal mode', async () => {
     setAdvancedMode(false)
-    const wrapper = await mountView(report())
+    const normalReport = report({
+      content: {
+        ...report().content,
+        recommendations: [{ ...report().content.recommendations[0], sampleId: 101 }],
+      },
+    })
+    const wrapper = await mountView(normalReport)
 
     expect(wrapper.text()).toContain('下一次自动运行')
     expect(wrapper.text()).toContain('2026-07-11 16:00:00')
     expect(wrapper.text()).not.toContain('从当前快照重建日报')
+    expect(wrapper.text()).not.toContain('查看研究样本')
   })
 
   it('renders the stock name already hydrated by the daily report API', async () => {

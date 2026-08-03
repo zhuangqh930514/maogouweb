@@ -1,7 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AutomationTasksView from '../AutomationTasksView.vue'
-import { fetchSchedulerJobLogs, fetchSchedulerStatus, toggleAutoClosePipeline } from '../../services/settings'
+import {
+  fetchSchedulerJobLogDetail,
+  fetchSchedulerJobLogs,
+  fetchSchedulerStatus,
+  toggleAutoClosePipeline,
+} from '../../services/settings'
 
 vi.mock('element-plus', async () => {
   const actual = await vi.importActual('element-plus')
@@ -14,6 +19,7 @@ vi.mock('element-plus', async () => {
 
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('../../services/settings', () => ({
+  fetchSchedulerJobLogDetail: vi.fn(),
   fetchSchedulerJobLogs: vi.fn(),
   fetchSchedulerStatus: vi.fn(),
   toggleAutoClosePipeline: vi.fn(),
@@ -66,6 +72,7 @@ describe('AutomationTasksView', () => {
       ],
     })
     fetchSchedulerJobLogs.mockResolvedValue([])
+    fetchSchedulerJobLogDetail.mockResolvedValue(null)
     toggleAutoClosePipeline.mockResolvedValue({ autoClosePipelineEnabled: false })
   })
 
@@ -122,6 +129,43 @@ describe('AutomationTasksView', () => {
 
     expect(toggleAutoClosePipeline).toHaveBeenCalledTimes(1)
     expect(toggleAutoClosePipeline).toHaveBeenCalledWith(false)
+    wrapper.unmount()
+  })
+
+  it('loads full log detail only after the user opens a log row', async () => {
+    fetchSchedulerJobLogs.mockResolvedValue([{
+      id: 77,
+      jobName: '全局日度研究',
+      jobType: 'GLOBAL_DAILY_RESEARCH',
+      status: 'PARTIAL_SUCCESS',
+      successCount: 8,
+      failedCount: 2,
+      currentStep: 'GENERATE_STOCK_REPORTS',
+      errorMessage: '行情源超时',
+      errorDetail: '股票代码=600519；完整失败明细',
+    }])
+    fetchSchedulerJobLogDetail.mockResolvedValue({
+      id: 77,
+      jobName: '全局日度研究',
+      status: 'PARTIAL_SUCCESS',
+      errorMessage: '行情源超时',
+      errorDetail: '股票代码=600519；完整失败明细',
+    })
+
+    const wrapper = mount(AutomationTasksView, {
+      global: { directives: { loading: () => {} } },
+    })
+    await flushPromises()
+
+    expect(fetchSchedulerJobLogs).toHaveBeenCalledWith(12)
+    const logSurface = wrapper.find('.automation-log-surface')
+    const detailButton = logSurface.findAll('button').find((button) => button.text() === '查看')
+    expect(detailButton).toBeTruthy()
+    await detailButton.trigger('click')
+    await flushPromises()
+
+    expect(fetchSchedulerJobLogDetail).toHaveBeenCalledWith(77)
+    expect(wrapper.text()).toContain('完整失败明细')
     wrapper.unmount()
   })
 })

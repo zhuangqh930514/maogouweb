@@ -28,6 +28,26 @@ export function ashareMarketStatus(date = new Date()) {
   return 'A股休市'
 }
 
+export function marketSourceStatus(sourceStatus, date = new Date()) {
+  const status = String(sourceStatus || 'UNAVAILABLE').trim().toUpperCase()
+  if (status === 'UNAVAILABLE') {
+    return 'UNAVAILABLE'
+  }
+  if (status === 'STALE') {
+    return 'STALE'
+  }
+  return isAshareMarketOpen(date) ? 'REALTIME' : 'RECENT_CLOSE'
+}
+
+export function marketSourceStatusText(sourceStatus, date = new Date()) {
+  return {
+    REALTIME: '实时',
+    STALE: '非实时',
+    RECENT_CLOSE: '最近收盘',
+    UNAVAILABLE: '数据源异常',
+  }[marketSourceStatus(sourceStatus, date)] || '数据状态待确认'
+}
+
 export function formatDateTime(date = new Date()) {
   const pad = (value) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`

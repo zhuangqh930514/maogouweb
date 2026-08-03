@@ -108,7 +108,7 @@
         <p class="stock-reason">{{ localizeStatusText(item.reasonSummary, '暂无说明') }}</p>
         <div class="stock-actions">
           <el-button text type="primary" @click="emit('open', item)">查看分析报告</el-button>
-          <el-button v-if="item.sampleId" text @click="emit('open-sample', item)">查看研究样本</el-button>
+          <el-button v-if="item.sampleId && canOpenSample" text @click="emit('open-sample', item)">查看研究样本</el-button>
         </div>
         <div class="feedback-actions">
           <span>本条结论</span>
@@ -167,6 +167,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   feedbackByStock: { type: Object, default: () => ({}) },
   feedbackLoadingStock: { type: String, default: '' },
+  canOpenSample: { type: Boolean, default: true },
 })
 
 const emit = defineEmits(['open', 'open-sample', 'page-change', 'feedback'])

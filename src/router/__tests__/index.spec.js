@@ -31,4 +31,13 @@ describe('unified AI research routes', () => {
 
     expect(router.currentRoute.value.path).toBe('/research-daily-reports')
   })
+
+  it('renders an explicit not-found route instead of an empty application shell', async () => {
+    const { default: router } = await import('../index')
+
+    await router.push('/route-that-does-not-exist')
+    await router.isReady()
+
+    expect(router.currentRoute.value.name).toBe('notFound')
+  })
 })

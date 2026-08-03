@@ -195,7 +195,7 @@
         </div>
         <el-button text type="primary" @click="openResearchLab('runs')">查看全局运行记录</el-button>
       </div>
-      <el-table :data="jobLogs" row-key="id" stripe empty-text="暂无后端任务日志">
+      <el-table :data="visibleJobLogs" row-key="id" stripe empty-text="暂无后端任务日志">
         <el-table-column prop="jobName" label="任务" min-width="170" />
         <el-table-column label="类型" min-width="132">
           <template #default="scope">{{ statusLabel(scope?.row?.jobType) }}</template>
@@ -223,12 +223,38 @@
         <el-table-column label="结束时间" min-width="164">
           <template #default="scope">{{ formatDateTime(scope?.row?.finishedAt) }}</template>
         </el-table-column>
-        <el-table-column label="失败原因" min-width="360" show-overflow-tooltip>
+        <el-table-column label="首要失败原因" min-width="280" show-overflow-tooltip>
           <template #default="scope">
-            {{ localizeStatusText(scope?.row?.errorDetail || scope?.row?.errorMessage, '-') }}
+            {{ localizeStatusText(scope?.row?.errorMessage, '-') }}
+          </template>
+        </el-table-column>
+        <el-table-column label="详情" width="84" fixed="right">
+          <template #default="scope">
+            <el-button text type="primary" @click.stop="openJobLog(scope.row)">查看</el-button>
           </template>
         </el-table-column>
       </el-table>
+      <el-drawer v-model="logDetailVisible" title="任务日志详情" size="min(680px, 92vw)">
+        <el-skeleton v-if="logDetailLoading" :rows="8" animated />
+        <template v-else-if="selectedJobLog">
+          <dl class="job-log-detail-grid">
+            <div><dt>任务</dt><dd>{{ selectedJobLog.jobName || '-' }}</dd></div>
+            <div><dt>状态</dt><dd>{{ statusLabel(selectedJobLog.status, '-') }}</dd></div>
+            <div><dt>处理结果</dt><dd>{{ selectedJobLog.successCount || 0 }} 成功 / {{ selectedJobLog.failedCount || 0 }} 失败</dd></div>
+            <div><dt>当前步骤</dt><dd>{{ statusLabel(selectedJobLog.currentStep, '-') }}</dd></div>
+            <div><dt>重试次数</dt><dd>{{ selectedJobLog.retryCount || 0 }}</dd></div>
+            <div><dt>下次重试</dt><dd>{{ formatDateTime(selectedJobLog.nextRetryAt) }}</dd></div>
+          </dl>
+          <div class="job-log-detail-block">
+            <strong>首要失败原因</strong>
+            <p>{{ localizeStatusText(selectedJobLog.errorMessage, '无') }}</p>
+          </div>
+          <div class="job-log-detail-block">
+            <strong>完整错误明细</strong>
+            <pre>{{ localizeStatusText(selectedJobLog.errorDetail, '无') }}</pre>
+          </div>
+        </template>
+      </el-drawer>
     </section>
   </div>
 </template>
@@ -238,7 +264,12 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Calendar, Cpu, Refresh, TrendCharts, VideoPause, VideoPlay } from '@element-plus/icons-vue'
-import { fetchSchedulerJobLogs, fetchSchedulerStatus, toggleAutoClosePipeline } from '../services/settings'
+import {
+  fetchSchedulerJobLogDetail,
+  fetchSchedulerJobLogs,
+  fetchSchedulerStatus,
+  toggleAutoClosePipeline,
+} from '../services/settings'
 import { localizeStatusText, statusLabel } from '../utils/statusLabels'
 import { statusTagType } from './research-lab/researchPresentation'
 
@@ -248,6 +279,9 @@ const jobLogs = ref([])
 const loading = ref(false)
 const toggling = ref(false)
 const errorMessage = ref('')
+const selectedJobLog = ref(null)
+const logDetailVisible = ref(false)
+const logDetailLoading = ref(false)
 let statusPollTimer = null
 
 const latestReport = computed(() => schedulerStatus.value?.latestResearchDailyReport || null)
@@ -256,6 +290,7 @@ const pipelineSummaries = computed(() => [
   { key: 'userDailyReport', title: '我的投研日报', summary: schedulerStatus.value?.userDailyReport || null },
 ])
 const recentTrend = computed(() => schedulerStatus.value?.recentTradingDayTrend || [])
+const visibleJobLogs = computed(() => jobLogs.value.slice(0, 8))
 const dailyStatusText = computed(() => {
   if (!schedulerStatus.value) return '读取中'
   if (!schedulerStatus.value.enabled) return '系统调度未启用'
@@ -290,7 +325,7 @@ async function loadAutomation({ quiet = false } = {}) {
     errorMessage.value = ''
   }
   try {
-    const [status, logs] = await Promise.all([fetchSchedulerStatus(), fetchSchedulerJobLogs(30)])
+    const [status, logs] = await Promise.all([fetchSchedulerStatus(), fetchSchedulerJobLogs(12)])
     schedulerStatus.value = status
     jobLogs.value = logs || []
   } catch (error) {
@@ -301,6 +336,20 @@ async function loadAutomation({ quiet = false } = {}) {
     if (!quiet) {
       loading.value = false
     }
+  }
+}
+
+async function openJobLog(row) {
+  selectedJobLog.value = row || null
+  logDetailVisible.value = Boolean(row)
+  if (!row?.id) return
+  logDetailLoading.value = true
+  try {
+    selectedJobLog.value = await fetchSchedulerJobLogDetail(row.id)
+  } catch (error) {
+    ElMessage.error(error.message || '任务日志详情加载失败')
+  } finally {
+    logDetailLoading.value = false
   }
 }
 
@@ -483,6 +532,64 @@ function progressStatus(status) {
 .automation-pipeline-surface > :deep(.el-table) {
   margin: 0 22px;
   width: calc(100% - 44px);
+}
+
+.job-log-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  margin: 0;
+}
+
+.job-log-detail-grid div {
+  min-width: 0;
+}
+
+.job-log-detail-grid dt,
+.job-log-detail-grid dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+.job-log-detail-grid dt {
+  color: #738098;
+}
+
+.job-log-detail-grid dd {
+  margin-top: 4px;
+  color: #263248;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.job-log-detail-block {
+  margin-top: 22px;
+}
+
+.job-log-detail-block strong {
+  color: #172033;
+  font-size: 13px;
+}
+
+.job-log-detail-block p {
+  margin: 8px 0 0;
+  color: #5d687b;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.job-log-detail-block pre {
+  max-height: 420px;
+  margin: 8px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #263248;
+  background: #f8fafc;
+  font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .automation-heading {

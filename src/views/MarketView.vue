@@ -2,6 +2,12 @@
   <div class="page">
     <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false" />
 
+    <div class="market-status-line" role="status">
+      <span class="market-status-label">行情状态</span>
+      <el-tag :type="marketStatusTagType" effect="plain">{{ marketStatusText }}</el-tag>
+      <span>{{ marketStatusMessage }}</span>
+    </div>
+
     <div v-loading="loading" class="market-index-strip">
       <article
         v-for="item in displayIndexes"
@@ -51,7 +57,7 @@
       </div>
       <div v-loading="sectorLoading" class="surface-body">
         <el-alert
-          v-if="sectorSource.sourceStatus !== 'REALTIME'"
+          v-if="marketSourceStatus(sectorSource.sourceStatus) !== 'REALTIME' && !sectorLoading && !marketPageLoading"
           class="source-alert"
           :type="sourceAlertType(sectorSource.sourceStatus)"
           :title="sourceMessage(sectorSource, '板块热力图数据源异常，暂不展示演示数据')"
@@ -90,7 +96,7 @@
       </div>
       <div class="surface-body">
         <el-alert
-          v-if="hotStocksSource.sourceStatus !== 'REALTIME'"
+          v-if="marketSourceStatus(hotStocksSource.sourceStatus) !== 'REALTIME' && !hotStocksLoading && !sectorLoading && !marketPageLoading"
           class="source-alert"
           :type="sourceAlertType(hotStocksSource.sourceStatus)"
           :title="sourceMessage(hotStocksSource, '板块热门股票数据源异常，暂不展示演示数据')"
@@ -107,7 +113,7 @@
           </el-table-column>
           <el-table-column label="最新价" width="120">
             <template #default="{ row }">
-              <span class="mono">{{ row.price.toFixed(2) }}</span>
+              <span class="mono">{{ formatQuotePrice(row.price) }}</span>
             </template>
           </el-table-column>
           <el-table-column label="涨跌幅" width="120">
@@ -153,12 +159,18 @@ import EChart from '../components/EChart.vue'
 import { klineOption, lineOption } from '../services/chartOptions'
 import { fetchIndexIntraday, fetchIndexKline, fetchMarketIndexes, fetchSectorHeatmap, fetchSectorHotStocks } from '../services/market'
 import { addWatchStock, fetchWatchlistCodes } from '../services/watchlist'
-import { isAshareMarketOpen } from '../utils/marketTime'
+import {
+  ashareMarketStatus,
+  isAshareMarketOpen,
+  marketSourceStatus,
+  marketSourceStatusText,
+} from '../utils/marketTime'
 
 const loading = ref(false)
 const chartLoading = ref(false)
 const sectorLoading = ref(false)
 const hotStocksLoading = ref(false)
+const marketPageLoading = ref(true)
 const errorMessage = ref('')
 const marketIndexes = ref([])
 const displayIndexes = computed(() => orderIndexes(marketIndexes.value))
@@ -182,12 +194,38 @@ const sectorSource = ref(emptySourceState())
 const hotStocksSource = ref(emptySourceState('EMPTY', '点击板块后读取热门股票'))
 const watchlistCodes = ref(new Set())
 const addingCodes = ref(new Set())
+const marketClock = ref(Date.now())
 const INDEX_REFRESH_MS = 15000
 const SECTOR_REFRESH_MS = 60000
 const SECTOR_FAILURE_BACKOFF_MS = 180000
 let indexRefreshTimer = null
 let sectorRefreshTimer = null
+let marketClockTimer = null
 let nextSectorRefreshAt = 0
+
+const marketStatusSource = computed(() => {
+  if (sectorSource.value.sourceStatus !== 'UNAVAILABLE') return sectorSource.value.sourceStatus
+  return marketIndexes.value.length ? 'REALTIME' : 'UNAVAILABLE'
+})
+const marketStatusText = computed(() => {
+  if (marketPageLoading.value || loading.value || sectorLoading.value) return '加载中'
+  return marketSourceStatusText(marketStatusSource.value, new Date(marketClock.value))
+})
+const marketStatusTagType = computed(() => {
+  if (marketPageLoading.value || loading.value || sectorLoading.value) return 'info'
+  const status = marketSourceStatus(marketStatusSource.value, new Date(marketClock.value))
+  return status === 'REALTIME' ? 'success' : status === 'UNAVAILABLE' ? 'danger' : 'warning'
+})
+const marketStatusMessage = computed(() => {
+  if (marketPageLoading.value || loading.value || sectorLoading.value) return '正在读取指数和板块数据，暂不展示未确认的零值。'
+  const date = new Date(marketClock.value)
+  const status = marketSourceStatus(marketStatusSource.value, date)
+  if (status === 'UNAVAILABLE') return '行情数据源暂不可用，页面不会使用演示数据。'
+  const context = sourceContext(sectorSource.value)
+  if (status === 'RECENT_CLOSE') return `${ashareMarketStatus(date)}，当前展示最近一次真实收盘数据${context}`
+  if (status === 'STALE') return `行情源异常，当前展示已明确标记的历史真实缓存${context}`
+  return `行情源已连接，数据按交易时段刷新${context}`
+})
 
 async function loadIndexes() {
   loading.value = true
@@ -208,6 +246,12 @@ async function loadIndexes() {
   }
 }
 
+async function loadInitialMarket() {
+  marketPageLoading.value = true
+  await Promise.allSettled([loadIndexes(), loadSectorHeatmap(), loadWatchlistCodes()])
+  marketPageLoading.value = false
+}
+
 async function loadSectorHeatmap({ silent = false } = {}) {
   if (sectorLoading.value) {
     return
@@ -220,8 +264,8 @@ async function loadSectorHeatmap({ silent = false } = {}) {
     sectorHeatmapItems.value = (data.items || []).map((item) => ({
       ...item,
       value: Number(item.value || 0),
-      percent: Number(item.percent || 0),
-      netInflow: Number(item.netInflow || 0),
+      percent: numberOrNull(item.percent),
+      netInflow: numberOrNull(item.netInflow),
       rank: Number(item.rank || 0),
     }))
     if (!selectedSector.value && sectorHeatmapItems.value.length) {
@@ -260,11 +304,11 @@ async function selectSector(item, { silent = false } = {}) {
     updateSectorBackoff(hotStocksSource.value)
     sectorHotStocks.value = (data.items || []).map((stock) => ({
       ...stock,
-      price: Number(stock.price || 0),
-      percent: Number(stock.percent || 0),
-      netInflow: Number(stock.netInflow || 0),
-      volume: Number(stock.volume || 0),
-      amount: Number(stock.amount || 0),
+      price: numberOrNull(stock.price),
+      percent: numberOrNull(stock.percent),
+      netInflow: numberOrNull(stock.netInflow),
+      volume: numberOrNull(stock.volume),
+      amount: numberOrNull(stock.amount),
       rank: Number(stock.rank || 0),
     }))
   } catch (error) {
@@ -377,12 +421,14 @@ function tileSizeClass(item) {
 }
 
 function formatPercent(value) {
-  const number = Number(value || 0)
+  const number = numberOrNull(value)
+  if (number === null) return '暂无'
   return `${number >= 0 ? '+' : ''}${number.toFixed(2)}%`
 }
 
 function formatNetInflow(value) {
-  const number = Number(value || 0)
+  const number = numberOrNull(value)
+  if (number === null) return '暂无'
   if (!number) {
     return '资金持平'
   }
@@ -390,8 +436,18 @@ function formatNetInflow(value) {
 }
 
 function formatAmount(value) {
-  const number = Number(value || 0)
-  return number ? `${(number / 100000000).toFixed(2)}亿` : '暂无'
+  const number = numberOrNull(value)
+  return number === null ? '暂无' : number ? `${(number / 100000000).toFixed(2)}亿` : '暂无'
+}
+
+function numberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function formatQuotePrice(value) {
+  return value === null ? '暂无' : value.toFixed(2)
 }
 
 function emptySourceState(status = 'UNAVAILABLE', message = '') {
@@ -421,21 +477,16 @@ function updateSectorBackoff(sourceState) {
 }
 
 function sourceStatusText(status) {
-  return {
-    REALTIME: '实时',
-    STALE: '非实时',
-    UNAVAILABLE: '数据源异常',
-    EMPTY: '待选择',
-  }[status] || status || '-'
+  if (marketPageLoading.value) return '加载中'
+  if (status === 'EMPTY') return '待选择'
+  return marketSourceStatusText(status, new Date(marketClock.value))
 }
 
 function sourceTagType(status) {
-  return {
-    REALTIME: 'success',
-    STALE: 'warning',
-    UNAVAILABLE: 'danger',
-    EMPTY: 'info',
-  }[status] || 'info'
+  if (marketPageLoading.value) return 'info'
+  if (status === 'EMPTY') return 'info'
+  const normalized = marketSourceStatus(status, new Date(marketClock.value))
+  return normalized === 'REALTIME' ? 'success' : normalized === 'UNAVAILABLE' ? 'danger' : 'warning'
 }
 
 function sourceAlertType(status) {
@@ -457,13 +508,31 @@ function formatDateTime(value) {
 function sourceMessage(sourceState, fallback) {
   const updatedAt = formatDateTime(sourceState.sourceUpdatedAt)
   const suffix = updatedAt === '-' ? '' : `，上次更新时间：${updatedAt}`
+  const date = new Date(marketClock.value)
+  const normalized = marketSourceStatus(sourceState.sourceStatus, date)
+  if (normalized === 'RECENT_CLOSE') {
+    return `${ashareMarketStatus(date)}，当前展示最近收盘数据${suffix}`
+  }
+  if (normalized === 'STALE' && !isAshareMarketOpen(date)) {
+    return `${ashareMarketStatus(date)}，当前使用非实时数据${suffix}`
+  }
   return `${sourceState.message || fallback}${suffix}`
 }
 
+function sourceContext(sourceState) {
+  const source = sourceState?.source || ''
+  const updatedAt = formatDateTime(sourceState?.sourceUpdatedAt)
+  const parts = []
+  if (source) parts.push(`数据源：${source}`)
+  if (updatedAt !== '-') parts.push(`数据时间：${updatedAt}`)
+  return parts.length ? `（${parts.join('；')}）` : '。'
+}
+
 onMounted(() => {
-  loadIndexes()
-  loadSectorHeatmap()
-  loadWatchlistCodes()
+  marketClockTimer = window.setInterval(() => {
+    marketClock.value = Date.now()
+  }, 30_000)
+  loadInitialMarket()
   indexRefreshTimer = window.setInterval(() => {
     if (isAshareMarketOpen()) {
       loadIndexes()
@@ -485,6 +554,9 @@ onUnmounted(() => {
   if (sectorRefreshTimer) {
     window.clearInterval(sectorRefreshTimer)
   }
+  if (marketClockTimer) {
+    window.clearInterval(marketClockTimer)
+  }
 })
 </script>
 
@@ -492,6 +564,22 @@ onUnmounted(() => {
 .source-panel {
   display: grid;
   gap: 12px;
+}
+
+.market-status-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 28px;
+  margin: 10px 0 14px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.market-status-label {
+  color: #1f2937;
+  font-weight: 700;
 }
 
 .market-index-strip {
