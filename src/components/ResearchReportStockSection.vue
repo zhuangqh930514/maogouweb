@@ -31,7 +31,7 @@
           </div>
           <div>
             <span>AI 报告观点</span>
-            <strong>AI {{ statusLabel(item.aiDecision, '未结构化') }} · {{ formatPercent(item.aiConfidence) }}</strong>
+            <strong>AI {{ statusLabel(item.aiDecision || 'AI_UNSTRUCTURED') }} · {{ formatPercent(item.aiConfidence) }}</strong>
           </div>
           <div>
             <span>风险等级</span>

@@ -1,5 +1,7 @@
 const STATUS_LABELS = Object.freeze({
   ABSTAIN: '暂不判断',
+  AI_OUTPUT_FAILED: 'AI 输出失败',
+  AI_UNSTRUCTURED: 'AI 未结构化',
   ACTIVE: '已启用',
   ADD: '加仓',
   AFTER_CLOSE: '收盘后',
@@ -32,6 +34,7 @@ const STATUS_LABELS = Object.freeze({
   RECENT_CLOSE: '最近收盘数据',
   DATA_NOT_READY: '样本数据未就绪',
   DATA_UNAVAILABLE: '数据不可用',
+  DATA_LIMITED: '数据受限',
   DAILY_REPORT_MISSING: '用户日报缺失',
   DETERMINISTIC_POLICY: '规则证据裁决',
   DECISION_CONFLICT: '日报结论冲突',
@@ -96,6 +99,8 @@ const STATUS_LABELS = Object.freeze({
   MEDIUM: '中风险',
   MISSING: '数据缺失',
   MISSING_HISTORICAL_UNIVERSE: '缺少历史股票池',
+  MISSING_CORE_PREDICTION: '缺少核心预测',
+  MISSING_DECISION_COMPONENT: '缺少决策组件',
   MODEL: '模型推理',
   MODEL_FAILURE: '模型调用失败',
   MODEL_TRAINING: '模型训练',
@@ -171,6 +176,7 @@ const STATUS_LABELS = Object.freeze({
   STRONG: '强势',
   STRATEGY_PROMOTION: '策略晋级',
   STRATEGY_FALLBACK: '策略级样本',
+  TRANSITION_STRATEGY_FALLBACK: '过渡期策略级样本',
   STRATEGY_T1_FALLBACK: 'T+1 策略级样本',
   STRATEGY_T2_FALLBACK: 'T+2 策略级样本',
   STRATEGY_T3_FALLBACK: 'T+3 策略级样本',
@@ -224,6 +230,14 @@ const WARNED_STATUS_VALUES = new Set()
 function dynamicStatusLabel(normalized) {
   const replay = normalized.match(/^REPLAY_(\d+)$/)
   if (replay) return `历史回放第 ${Number(replay[1])} 批`
+  const missingPrediction = normalized.match(/^MISSING_T([1235])_PREDICTION$/)
+  if (missingPrediction) return `缺少 T+${missingPrediction[1]} 预测`
+  const sampleQuality = normalized.match(/^SAMPLE_QUALITY_(.+)$/)
+  if (sampleQuality) return `样本质量：${statusLabel(sampleQuality[1], sampleQuality[1])}`
+  const tradableStatus = normalized.match(/^SAMPLE_TRADABLE_(.+)$/)
+  if (tradableStatus) return `样本交易状态：${statusLabel(tradableStatus[1], tradableStatus[1])}`
+  const unverified = normalized.match(/^UNVERIFIED_(.+)$/)
+  if (unverified) return `血缘未验证：${dynamicStatusLabel(unverified[1]) || unverified[1]}`
   return ''
 }
 

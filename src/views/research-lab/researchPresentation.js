@@ -243,7 +243,11 @@ export function confidenceLabel(value) {
 export function formatRatio(value) {
   const number = Number(value)
   if (!Number.isFinite(number)) return '-'
-  return `${(number * 100).toFixed(2)}%`
+  // Research APIs contain both ratio values (0..1) and legacy percentage-point
+  // values (0..100). Normalize at the presentation boundary so a percentage
+  // point is never multiplied by 100 a second time.
+  const percentage = Math.abs(number) > 1 ? number : number * 100
+  return `${percentage.toFixed(2)}%`
 }
 
 export function formatPercent(value) {

@@ -314,6 +314,8 @@ const normalizedSelectedReport = computed(() => {
   }
   return {
     ...selected.value,
+    predictionId: selected.value.predictionId ?? null,
+    strategyVersionId: selected.value.strategyVersionId ?? selected.value.strategyReleaseId ?? null,
     technicalAnalysisDisplay: normalizeReportField(selected.value.technicalAnalysis, 'technicalAnalysis'),
     riskWarningDisplay: normalizeReportField(selected.value.riskWarning, 'riskWarning'),
     buySellPointsDisplay: normalizeReportField(selected.value.buySellPoints, 'buySellPoints'),
