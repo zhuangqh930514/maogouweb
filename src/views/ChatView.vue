@@ -67,6 +67,9 @@
               </div>
               <span v-else>{{ message.content }}</span>
             </div>
+            <div v-if="message.status === 'FAILED' && message.retryAfterSeconds" class="message-error-hint">
+              约 {{ message.retryAfterSeconds }} 秒后可重试
+            </div>
             <small>{{ formatFullTime(message.createdAt) }}</small>
           </div>
         </div>
@@ -685,6 +688,12 @@ function pad(value) {
 
 .message-content small {
   color: #94a3b8;
+  font-size: 12px;
+}
+
+.message-error-hint {
+  margin-top: 6px;
+  color: #b45309;
   font-size: 12px;
 }
 
