@@ -227,6 +227,35 @@ describe('ResearchDailyReportView', () => {
     expect(wrapper.text()).toContain('流水线失败')
   })
 
+  it('refreshes issue details from page one instead of sending the click event as page', async () => {
+    fetchResearchDailyReportIssues.mockResolvedValue({
+      items: [{
+        id: 501,
+        stockCode: '600519',
+        stockName: '贵州茅台',
+        stepKey: 'FETCH_QUOTE',
+        providerCode: 'EASTMONEY',
+        reasonCode: 'SOURCE_UNAVAILABLE',
+        reasonMessage: '行情源暂时不可用',
+        recoverable: true,
+        retryCount: 1,
+        maxRetries: 3,
+      }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    })
+
+    const wrapper = await mountView(report())
+    const refreshButton = wrapper.findAll('button').find((button) => button.text().includes('刷新明细'))
+
+    expect(refreshButton).toBeTruthy()
+    await refreshButton.trigger('click')
+    await flushPromises()
+
+    expect(fetchResearchDailyReportIssues).toHaveBeenLastCalledWith(1, { page: 1, pageSize: 20 })
+  })
+
   it('shows stale freshness explicitly', async () => {
     const stale = report({ freshnessStatus: 'STALE' })
     const wrapper = await mountView(stale)

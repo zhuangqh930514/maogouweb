@@ -151,7 +151,7 @@
                 <h3>数据问题明细</h3>
                 <p>只展示已落库的步骤、股票、数据源和重试原因，不用日志猜测失败。</p>
               </div>
-              <el-button size="small" @click="loadIssueDetails">刷新明细</el-button>
+              <el-button size="small" @click="loadIssueDetails(1)">刷新明细</el-button>
             </div>
             <div v-if="issueItems.length" class="pipeline-issue-list">
               <div v-for="issue in issueItems" :key="issue.id" class="pipeline-issue-item">
